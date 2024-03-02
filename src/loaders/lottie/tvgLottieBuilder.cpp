@@ -1121,6 +1121,16 @@ static bool _buildComposition(LottieComposition* comp, LottieGroup* parent)
 }
 
 
+#include "tvgLottieJSEngine.h"
+
+static void _buildExpressions(LottieComposition* comp)
+{
+    for (auto e = comp->expressions.begin(); e < comp->expressions.end(); ++e) {
+        LottieJSEngine::interpret(comp, e);
+    }
+}
+
+
 /************************************************************************/
 /* External Class Implementation                                        */
 /************************************************************************/
@@ -1149,6 +1159,7 @@ void LottieBuilder::build(LottieComposition* comp)
     comp->root->scene = Scene::gen().release();
     if (!comp->root->scene) return;
 
+    _buildExpressions(comp);
     _buildComposition(comp, comp->root);
 
     if (!update(comp, 0)) return;

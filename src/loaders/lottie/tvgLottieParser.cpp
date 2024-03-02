@@ -627,7 +627,7 @@ LottieSolidStroke* LottieParser::parseSolidStroke()
 }
 
 
- void LottieParser::getPathSet(LottiePathSet& path)
+void LottieParser::getPathSet(LottiePathSet& path)
 {
     enterObject();
     while (auto key = nextObjectKey()) {
@@ -638,6 +638,8 @@ LottieSolidStroke* LottieParser::parseSolidStroke()
             } else {
                 getValue(path.value);
             }
+        } else if (!strcmp(key, "x")) {
+            comp->expressions.push({context->layer, LottieProperty::Type::PathSet, &path, getStringCopy()});
         } else skip(key);
     }
 }

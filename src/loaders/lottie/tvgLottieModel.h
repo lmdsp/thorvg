@@ -32,6 +32,7 @@
 
 struct LottieComposition;
 
+
 struct LottieStroke
 {
     struct DashAttr
@@ -645,6 +646,15 @@ struct LottieSlot
 };
 
 
+struct LottieExpression
+{
+    LottieLayer* root;
+    LottieProperty::Type type;
+    LottieProperty* prop;
+    char* src;
+};
+
+
 struct LottieComposition
 {
     ~LottieComposition();
@@ -676,6 +686,7 @@ struct LottieComposition
     Array<LottieInterpolator*> interpolators;
     Array<LottieFont*> fonts;
     Array<LottieSlot*> slots;
+    Array<LottieExpression> expressions;
     bool initiated = false;
 };
 

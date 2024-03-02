@@ -220,17 +220,14 @@ LottieComposition::~LottieComposition()
     }
 
     //delete assets
-    for (auto a = assets.begin(); a < assets.end(); ++a) {
-        delete(*a);
-    }
+    for (auto a = assets.begin(); a < assets.end(); ++a) delete(*a);
 
     //delete fonts
-    for (auto f = fonts.begin(); f < fonts.end(); ++f) {
-        delete(*f);
-    }
+    for (auto f = fonts.begin(); f < fonts.end(); ++f) delete(*f);
 
     //delete slots
-    for (auto s = slots.begin(); s < slots.end(); ++s) {
-        delete(*s);
-    }
+    for (auto s = slots.begin(); s < slots.end(); ++s) delete(*s);
+
+    //delete expressions
+    for (auto e = expressions.begin(); e < expressions.end(); ++e) free(e->src);
 }
