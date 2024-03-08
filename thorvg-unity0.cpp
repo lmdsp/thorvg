@@ -1,0 +1,5 @@
+#include "src/renderer/tvgAccessor.cpp"
+#include "src/renderer/tvgAnimation.cpp"
+#include "src/renderer/tvgCanvas.cpp"
+#include "src/renderer/tvgFill.cpp"
+#include "src/renderer/tvgText.cpp"

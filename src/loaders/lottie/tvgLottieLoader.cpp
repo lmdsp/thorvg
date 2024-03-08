@@ -216,6 +216,7 @@ bool LottieLoader::open(const char* data, uint32_t size, bool copy)
     return header();
 }
 
+#define FLUX_TVG_LOTTIE_PATCHED
 
 bool LottieLoader::open(const string& path)
 {
@@ -234,8 +235,15 @@ bool LottieLoader::open(const string& path)
     fseek(f, 0, SEEK_SET);
     auto ret = fread(content, sizeof(char), size, f);
     if (ret < size) {
-        fclose(f);
-        return false;
+
+        //hack for  windows !!! don't know why but sometimes size is not correct
+        // e.g. size == 33113, ret == 31708
+        if (ret < size - (size / 16))
+        {
+            fclose(f);
+            return false;
+        }
+        size = ret;
     }
     content[size] = '\0';
 

@@ -32,15 +32,27 @@
 struct Animation::Impl
 {
     Picture* picture = nullptr;
+    bool pure_ref = false;
 
-    Impl()
+    Impl(Picture* pic = nullptr) : picture(pic)
     {
+        if (pic)
+        {
+            pure_ref = true;
+            return;
+        }
+
         picture = Picture::gen().release();
         PP(picture)->ref();
     }
 
     ~Impl()
     {
+        if (pure_ref)
+        {
+            return;
+        }
+
         if (PP(picture)->unref() == 0) {
             delete(picture);
         }
@@ -59,6 +71,11 @@ Animation::~Animation()
 
 Animation::Animation() : pImpl(new Impl)
 {
+}
+
+Animation::Animation(Picture* picture) : pImpl(new Impl(picture))
+{
+
 }
 
 
@@ -113,7 +130,7 @@ float Animation::duration() const noexcept
 }
 
 
-unique_ptr<Animation> Animation::gen() noexcept
+unique_ptr<Animation> Animation::gen(Picture* picture) noexcept
 {
-    return unique_ptr<Animation>(new Animation);
+    return unique_ptr<Animation>(new Animation(picture));
 }

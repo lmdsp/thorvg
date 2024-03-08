@@ -1,0 +1,7 @@
+#include "src/loaders/lottie/tvgLottieParserHandler.cpp"
+#include "src/loaders/lottie/tvgLottieParser.cpp"
+#include "src/loaders/raw/tvgRawLoader.cpp"
+#include "src/loaders/jpg/tvgJpgLoader.cpp"
+#include "src/loaders/jpg/tvgJpgd.cpp"
+#include "src/loaders/png/tvgPngLoader.cpp"
+#include "src/loaders/png/tvgLodePng.cpp"

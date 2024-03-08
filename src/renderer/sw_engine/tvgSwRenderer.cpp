@@ -374,6 +374,10 @@ SwRenderer::~SwRenderer()
     if (rendererCnt == 0 && initEngineCnt == 0) _termEngine();
 }
 
+// NOTE This patch gives black drawing with ThorVG 0.12.x, don't apply it anymore / check with Gael
+#define FLUX_TVG_SW_RENDERER_PATCH_1 0
+
+#if !FLUX_TVG_SW_RENDERER_PATCH_1
 
 bool SwRenderer::clear()
 {
@@ -404,6 +408,38 @@ bool SwRenderer::sync()
     return true;
 }
 
+#else
+
+bool SwRenderer::clear()
+{
+    if (surface)
+        return rasterClear(surface, 0, 0, surface->w, surface->h);
+    return false;
+}
+
+bool SwRenderer::sync()
+{
+    for (auto task = tasks.data; task < tasks.end(); ++task)
+    {
+        if ((*task)->disposed)
+        {
+            delete (*task);
+        }
+        else
+        {
+            (*task)->done();
+            (*task)->pushed = false;
+        }
+    }
+    tasks.clear();
+
+    if (!sharedMpool)
+        mpoolClear(mpool);
+
+    return true;
+}
+
+#endif // !FLUX_TVG_SW_RENDERER_PATCH_1
 
 RenderRegion SwRenderer::viewport()
 {
@@ -441,11 +477,26 @@ bool SwRenderer::target(pixel_t* data, uint32_t stride, uint32_t w, uint32_t h, 
     return rasterCompositor(surface);
 }
 
+#define FLUX_TVG_SW_RENDERER_PATCH_2 1
 
+#if !FLUX_TVG_SW_RENDERER_PATCH_2
 bool SwRenderer::preRender()
 {
     return rasterClear(surface, 0, 0, surface->w, surface->h);
 }
+#else
+bool SwRenderer::preRender()
+{
+    if (surface)
+    {
+        vport.x = vport.y = 0;
+        vport.w           = surface->w;
+        vport.h           = surface->h;
+    }
+
+    return true;
+}
+#endif // !FLUX_TVG_SW_RENDERER_PATCH_2
 
 
 void SwRenderer::clearCompositors()
