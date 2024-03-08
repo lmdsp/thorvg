@@ -23,6 +23,7 @@
 #include <cstring>
 
 #include "tvgCommon.h"
+#include "tvgMath.h"
 #include "tvgPaint.h"
 #include "tvgShape.h"
 #include "tvgInlist.h"
@@ -360,20 +361,62 @@ static void _repeat(LottieGroup* parent, unique_ptr<Shape> path, RenderContext* 
 
     //push repeat shapes in order.
     if (repeater->inorder) {
-        for (auto shape = shapes.data; shape < shapes.end(); ++shape) {
+        for (auto shape = shapes.begin(); shape < shapes.end(); ++shape) {
             parent->scene->push(cast(*shape));
         }
     } else {
-        for (auto shape = shapes.end() - 1; shape >= shapes.data; --shape) {
+        for (auto shape = shapes.end() - 1; shape >= shapes.begin(); --shape) {
             parent->scene->push(cast(*shape));
         }
     }
 }
 
 
+static void _appendRect(Shape* shape, float x, float y, float w, float h, float r)
+{
+    //sharp rect
+    if (mathZero(r)) {
+        PathCommand commands[] = {
+            PathCommand::MoveTo, PathCommand::LineTo, PathCommand::LineTo,
+            PathCommand::LineTo, PathCommand::Close
+        };
+        Point points[] = {{x + w, y}, {x + w, y + h}, {x, y + h}, {x, y}};
+        shape->appendPath(commands, 5, points, 4);
+    //round rect
+    } else {
+        PathCommand commands[] = {
+            PathCommand::MoveTo, PathCommand::LineTo, PathCommand::CubicTo,
+            PathCommand::LineTo, PathCommand::CubicTo, PathCommand::LineTo,
+            PathCommand::CubicTo, PathCommand::LineTo, PathCommand::CubicTo,
+            PathCommand::Close
+        };
+
+        auto halfW = w * 0.5f;
+        auto halfH = h * 0.5f;
+        auto rx = r > halfW ? halfW : r;
+        auto ry = r > halfH ? halfH : r;
+        auto hrx = rx * PATH_KAPPA;
+        auto hry = ry * PATH_KAPPA;
+
+        Point points[] = {
+            {x + w, y + ry}, //moveTo
+            {x + w, y + h - ry}, //lineTo
+            {x + w, y + h - ry + hry}, {x + w - rx + hrx, y + h}, {x + w - rx, y + h}, //cubicTo
+            {x + rx, y + h}, //lineTo
+            {x + rx - hrx, y + h}, {x, y + h - ry + hry}, {x, y + h - ry}, //cubicTo
+            {x, y + ry}, //lineTo
+            {x, y + ry - hry}, {x + rx - hrx, y}, {x + rx, y}, //cubicTo
+            {x + w - rx, y}, //lineTo
+            {x + w - rx + hrx, y}, {x + w, y + ry - hry}, {x + w, y + ry} //cubicTo
+        };
+
+        shape->appendPath(commands, 10, points, 17);
+    }
+}
+
 static void _updateRect(LottieGroup* parent, LottieObject** child, float frameNo, TVG_UNUSED Inlist<RenderContext>& contexts, RenderContext* ctx)
 {
-    auto rect= static_cast<LottieRect*>(*child);
+    auto rect = static_cast<LottieRect*>(*child);
 
     auto position = rect->position(frameNo);
     auto size = rect->size(frameNo);
@@ -387,30 +430,53 @@ static void _updateRect(LottieGroup* parent, LottieObject** child, float frameNo
 
     if (ctx->repeater) {
         auto path = Shape::gen();
-        path->appendRect(position.x - size.x * 0.5f, position.y - size.y * 0.5f, size.x, size.y, roundness, roundness);
+        _appendRect(path.get(), position.x - size.x * 0.5f, position.y - size.y * 0.5f, size.x, size.y, roundness);
         _repeat(parent, std::move(path), ctx);
     } else {
         auto merging = _draw(parent, ctx);
-        merging->appendRect(position.x - size.x * 0.5f, position.y - size.y * 0.5f, size.x, size.y, roundness, roundness);
+        _appendRect(merging, position.x - size.x * 0.5f, position.y - size.y * 0.5f, size.x, size.y, roundness);
         if (rect->direction == 2) merging->fill(FillRule::EvenOdd);
     }
 }
 
 
+static void _appendCircle(Shape* shape, float cx, float cy, float rx, float ry)
+{
+    auto rxKappa = rx * PATH_KAPPA;
+    auto ryKappa = ry * PATH_KAPPA;
+
+    constexpr int commandsSize = 6;
+    PathCommand commands[commandsSize] = {
+        PathCommand::MoveTo, PathCommand::CubicTo, PathCommand::CubicTo,
+        PathCommand::CubicTo, PathCommand::CubicTo, PathCommand::Close
+    };
+
+    constexpr int pointsSize = 13;
+    Point points[pointsSize] = {
+        {cx, cy - ry}, //moveTo
+        {cx + rxKappa, cy - ry}, {cx + rx, cy - ryKappa}, {cx + rx, cy}, //cubicTo
+        {cx + rx, cy + ryKappa}, {cx + rxKappa, cy + ry}, {cx, cy + ry}, //cubicTo
+        {cx - rxKappa, cy + ry}, {cx - rx, cy + ryKappa}, {cx - rx, cy}, //cubicTo
+        {cx - rx, cy - ryKappa}, {cx - rxKappa, cy - ry}, {cx, cy - ry}  //cubicTo
+    };
+    
+    shape->appendPath(commands, commandsSize, points, pointsSize);
+}
+
 static void _updateEllipse(LottieGroup* parent, LottieObject** child, float frameNo, TVG_UNUSED Inlist<RenderContext>& contexts, RenderContext* ctx)
 {
-    auto ellipse= static_cast<LottieEllipse*>(*child);
+    auto ellipse = static_cast<LottieEllipse*>(*child);
 
     auto position = ellipse->position(frameNo);
     auto size = ellipse->size(frameNo);
 
     if (ctx->repeater) {
         auto path = Shape::gen();
-        path->appendCircle(position.x, position.y, size.x * 0.5f, size.y * 0.5f);
+        _appendCircle(path.get(), position.x, position.y, size.x * 0.5f, size.y * 0.5f);
         _repeat(parent, std::move(path), ctx);
     } else {
         auto merging = _draw(parent, ctx);
-        merging->appendCircle(position.x, position.y, size.x * 0.5f, size.y * 0.5f);
+        _appendCircle(merging, position.x, position.y, size.x * 0.5f, size.y * 0.5f);
         if (ellipse->direction == 2) merging->fill(FillRule::EvenOdd);
     }
 }
@@ -454,15 +520,15 @@ static void _updateText(LottieGroup* parent, LottieObject** child, float frameNo
     //text string
     while (*p != '\0') {
         //find the glyph
-        for (auto g = text->font->chars.data; g < text->font->chars.end(); ++g) {
+        for (auto g = text->font->chars.begin(); g < text->font->chars.end(); ++g) {
             auto glyph = *g;
             //draw matched glyphs
             if (!strncmp(glyph->code, p, glyph->len)) {
                 //TODO: caching?
                 auto shape = Shape::gen();
-                for (auto g = glyph->children.data; g < glyph->children.end(); ++g) {
+                for (auto g = glyph->children.begin(); g < glyph->children.end(); ++g) {
                     auto group = static_cast<LottieGroup*>(*g);
-                    for (auto p = group->children.data; p < group->children.end(); ++p) {
+                    for (auto p = group->children.begin(); p < group->children.end(); ++p) {
                         if (static_cast<LottiePath*>(*p)->pathset(frameNo, P(shape)->rs.path.cmds, P(shape)->rs.path.pts)) {
                             P(shape)->update(RenderUpdateFlag::Path);
                         }
@@ -889,7 +955,7 @@ static void _updatePrecomp(LottieLayer* precomp, float frameNo)
 
     frameNo = precomp->remap(frameNo);
 
-    for (auto child = precomp->children.end() - 1; child >= precomp->children.data; --child) {
+    for (auto child = precomp->children.end() - 1; child >= precomp->children.begin(); --child) {
         _updateLayer(precomp, static_cast<LottieLayer*>(*child), frameNo);
     }
 
@@ -925,7 +991,7 @@ static void _updateMaskings(LottieLayer* layer, float frameNo)
     Shape* pmask = nullptr;
     auto pmethod = CompositeMethod::AlphaMask;
 
-    for (auto m = layer->masks.data; m < layer->masks.end(); ++m) {
+    for (auto m = layer->masks.begin(); m < layer->masks.end(); ++m) {
         auto mask = static_cast<LottieMask*>(*m);
         auto shape = Shape::gen().release();
         shape->fill(255, 255, 255, mask->opacity(frameNo));
@@ -1029,7 +1095,7 @@ static void _updateLayer(LottieLayer* root, LottieLayer* layer, float frameNo)
 
 static void _buildReference(LottieComposition* comp, LottieLayer* layer)
 {
-    for (auto asset = comp->assets.data; asset < comp->assets.end(); ++asset) {
+    for (auto asset = comp->assets.begin(); asset < comp->assets.end(); ++asset) {
         if (strcmp(layer->refId, (*asset)->name)) continue;
         if (layer->type == LottieLayer::Precomp) {
             auto assetLayer = static_cast<LottieLayer*>(*asset);
@@ -1055,7 +1121,7 @@ static void _bulidHierarchy(LottieGroup* parent, LottieLayer* child)
         return;
     }
 
-    for (auto p = parent->children.data; p < parent->children.end(); ++p) {
+    for (auto p = parent->children.begin(); p < parent->children.end(); ++p) {
         auto parent = static_cast<LottieLayer*>(*p);
         if (child == parent) continue;
         if (child->pid == parent->id) {
@@ -1073,7 +1139,7 @@ static void _bulidHierarchy(LottieGroup* parent, LottieLayer* child)
 static void _attachFont(LottieComposition* comp, LottieLayer* parent)
 {
     //TODO: Consider to migrate this attachment to the frame update time.
-    for (auto c = parent->children.data; c < parent->children.end(); ++c) {
+    for (auto c = parent->children.begin(); c < parent->children.end(); ++c) {
         auto text = static_cast<LottieText*>(*c);
         auto& doc = text->doc(0);
         if (!doc.name) continue;
@@ -1096,7 +1162,7 @@ static bool _buildComposition(LottieComposition* comp, LottieGroup* parent)
     if (parent->buildDone) return true;
     parent->buildDone = true;
 
-    for (auto c = parent->children.data; c < parent->children.end(); ++c) {
+    for (auto c = parent->children.begin(); c < parent->children.end(); ++c) {
         auto child = static_cast<LottieLayer*>(*c);
 
         //attach the precomp layer.
@@ -1135,7 +1201,7 @@ bool LottieBuilder::update(LottieComposition* comp, float frameNo)
     auto root = comp->root;
     root->scene->clear();
 
-    for (auto child = root->children.end() - 1; child >= root->children.data; --child) {
+    for (auto child = root->children.end() - 1; child >= root->children.begin(); --child) {
         _updateLayer(root, static_cast<LottieLayer*>(*child), frameNo);
     }
     return true;

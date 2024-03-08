@@ -1956,6 +1956,10 @@ TVG_API Tvg_Paint* tvg_picture_new();
 /*!
 * \brief Loads a picture data directly from a file.
 *
+* ThorVG efficiently caches the loaded data using the specified @p path as a key.
+* This means that loading the same file again will not result in duplicate operations;
+* instead, ThorVG will reuse the previously loaded picture data.
+*
 * \param[in] paint A Tvg_Paint pointer to the picture object.
 * \param[in] path The absolute path to the image file.
 *
@@ -1970,6 +1974,10 @@ TVG_API Tvg_Result tvg_picture_load(Tvg_Paint* paint, const char* path);
 
 /*!
 * \brief Loads a picture data from a memory block of a given size.
+*
+* ThorVG efficiently caches the loaded data using the specified @p data address as a key
+* when the @p copy has @c false. This means that loading the same data again will not result in duplicate operations
+* for the sharable @p data. Instead, ThorVG will reuse the previously loaded picture data.
 *
 * \param[in] paint A Tvg_Paint pointer to the picture object.
 * \param[in] data A pointer to a memory location where the content of the picture raw data is stored.
@@ -1991,6 +1999,10 @@ TVG_API Tvg_Result tvg_picture_load_raw(Tvg_Paint* paint, uint32_t *data, uint32
 
 /*!
 * \brief Loads a picture data from a memory block of a given size.
+*
+* ThorVG efficiently caches the loaded data using the specified @p data address as a key
+* when the @p copy has @c false. This means that loading the same data again will not result in duplicate operations
+* for the sharable @p data. Instead, ThorVG will reuse the previously loaded picture data.
 *
 * \param[in] paint A Tvg_Paint pointer to the picture object.
 * \param[in] data A pointer to a memory location where the content of the picture file is stored.
@@ -2319,7 +2331,48 @@ TVG_API Tvg_Result tvg_animation_get_duration(Tvg_Animation* animation, float* d
 TVG_API Tvg_Result tvg_animation_del(Tvg_Animation* animation);
 
 
-/** \} */   // end defgroup ThorVG_CAPI
+/** \} */   // end defgroup ThorVGCapi_Animation
+
+
+/**
+* \defgroup ThorVGCapi_LottieAnimation LottieAnimation
+* \brief A module for manipulation of lottie extension features.
+*
+* The module enables control of advanced Lottie features.
+* \{
+*/
+
+/************************************************************************/
+/* LottieAnimation Extension API                                        */
+/************************************************************************/
+
+/*!
+* \brief Creates a new LottieAnimation object. (Experimental API)
+*
+* \return Tvg_Animation A new Tvg_LottieAnimation object.
+*/
+TVG_API Tvg_Animation* tvg_lottie_animation_new();
+
+
+/*!
+* \brief Override the lottie properties through the slot data. (Experimental API)
+*
+* \param[in] animation The Tvg_Animation object to override the property with the slot.
+* \param[in] slot The lottie slot data in json.
+*
+* \return Tvg_Animation A new Tvg_LottieAnimation object.
+* \retval TVG_RESULT_SUCCESS Succeed.
+* \retval TVG_RESULT_INSUFFICIENT_CONDITION In case the animation is not loaded.
+* \retval TVG_RESULT_INVALID_ARGUMENT When the given @p slot is invalid
+* \retval TVG_RESULT_NOT_SUPPORTED The Lottie Animation is not supported.
+*/
+TVG_API Tvg_Result tvg_lottie_animation_override(Tvg_Animation* animation, const char* slot);
+
+
+/** \} */   // end addtogroup ThorVGCapi_LottieAnimation
+
+
+/** \} */   // end defgroup ThorVGCapi
 
 
 #ifdef __cplusplus

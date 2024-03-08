@@ -20,44 +20,13 @@
  * SOFTWARE.
  */
 
-#include "tvgCommon.h"
 #include "tvgFrameModule.h"
-#include "tvgPaint.h"
-#include "tvgPicture.h"
+#include "tvgAnimation.h"
 
 /************************************************************************/
 /* Internal Class Implementation                                        */
 /************************************************************************/
 
-struct Animation::Impl
-{
-    Picture* picture = nullptr;
-    bool pure_ref = false;
-
-    Impl(Picture* pic = nullptr) : picture(pic)
-    {
-        if (pic)
-        {
-            pure_ref = true;
-            return;
-        }
-
-        picture = Picture::gen().release();
-        PP(picture)->ref();
-    }
-
-    ~Impl()
-    {
-        if (pure_ref)
-        {
-            return;
-        }
-
-        if (PP(picture)->unref() == 0) {
-            delete(picture);
-        }
-    }
-};
 
 /************************************************************************/
 /* External Class Implementation                                        */

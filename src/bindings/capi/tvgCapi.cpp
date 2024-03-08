@@ -20,8 +20,10 @@
  * SOFTWARE.
  */
 
+#include "config.h"
 #include <string>
 #include <thorvg.h>
+#include <thorvg_lottie.h>
 #include "thorvg_capi.h"
 
 using namespace std;
@@ -771,6 +773,29 @@ TVG_API Tvg_Result tvg_animation_del(Tvg_Animation* animation)
     if (!animation) return TVG_RESULT_INVALID_ARGUMENT;
     delete(reinterpret_cast<Animation*>(animation));
     return TVG_RESULT_SUCCESS;
+}
+
+
+/************************************************************************/
+/* Lottie Animation API                                                 */
+/************************************************************************/
+
+TVG_API Tvg_Animation* tvg_lottie_animation_new()
+{
+#ifdef THORVG_LOTTIE_LOADER_SUPPORT
+    return (Tvg_Animation*) LottieAnimation::gen().release();
+#endif
+    return nullptr;
+}
+
+
+TVG_API Tvg_Result tvg_lottie_animation_override(Tvg_Animation* animation, const char* slot)
+{
+#ifdef THORVG_LOTTIE_LOADER_SUPPORT
+    if (!animation) return TVG_RESULT_INVALID_ARGUMENT;
+    return (Tvg_Result) reinterpret_cast<LottieAnimation*>(animation)->override(slot);
+#endif
+    return TVG_RESULT_NOT_SUPPORTED;
 }
 
 #ifdef __cplusplus

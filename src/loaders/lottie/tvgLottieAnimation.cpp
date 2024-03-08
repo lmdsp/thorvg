@@ -20,52 +20,37 @@
  * SOFTWARE.
  */
 
-#ifndef _TVG_LOCK_H_
-#define _TVG_LOCK_H_
+#include "tvgCommon.h"
+#include "thorvg_lottie.h"
+#include "tvgLottieLoader.h"
+#include "tvgAnimation.h"
 
-#ifdef THORVG_THREAD_SUPPORT
 
-#include <mutex>
+/************************************************************************/
+/* Internal Class Implementation                                        */
+/************************************************************************/
 
-namespace tvg {
+/************************************************************************/
+/* External Class Implementation                                        */
+/************************************************************************/
 
-    struct Key
-    {
-        std::mutex mtx;
-    };
-
-    struct ScopedLock
-    {
-        Key* key = nullptr;
-
-        ScopedLock(Key& k)
-        {
-            k.mtx.lock();
-            key = &k;
-        }
-
-        ~ScopedLock()
-        {
-            key->mtx.unlock();
-        }
-    };
-
+LottieAnimation::~LottieAnimation()
+{
 }
 
-#else //THORVG_THREAD_SUPPORT
+Result LottieAnimation::override(const char* slot) noexcept
+{
+    if (!pImpl->picture->pImpl->loader) return Result::InsufficientCondition;
 
-namespace tvg {
+    if (static_cast<LottieLoader*>(pImpl->picture->pImpl->loader)->override(slot)) {
+        return Result::Success;
+    }
 
-    struct Key {};
-
-    struct ScopedLock
-    {
-        ScopedLock(Key& key) {}
-    };
-
+    return Result::InvalidArguments;
 }
 
-#endif //THORVG_THREAD_SUPPORT
 
-#endif //_TVG_LOCK_H_
-
+unique_ptr<LottieAnimation> LottieAnimation::gen() noexcept
+{
+    return unique_ptr<LottieAnimation>(new LottieAnimation);
+}
