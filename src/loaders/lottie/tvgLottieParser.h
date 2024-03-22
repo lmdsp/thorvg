@@ -36,8 +36,8 @@ public:
     }
 
     bool parse();
-    bool parse(LottieSlot* slot);
-    const char* sid();
+    bool apply(LottieSlot* slot);
+    const char* sid(bool first = false);
 
     LottieComposition* comp = nullptr;
     const char* dirName = nullptr;       //base resource directory
@@ -110,7 +110,7 @@ private:
     struct Context {
         LottieLayer* layer = nullptr;
         LottieGradient* gradient = nullptr;
-    } *context;
+    } context;
 };
 
 #endif //_TVG_LOTTIE_PARSER_H_

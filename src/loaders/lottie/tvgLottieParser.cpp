@@ -252,7 +252,7 @@ void LottieParser::getValue(ColorStop& color)
 {
     if (peekType() == kArrayType) enterArray();
 
-    color.input = new Array<float>(context->gradient->colorStops.count);
+    color.input = new Array<float>(context.gradient->colorStops.count);
 
     while (nextArrayValue()) color.input->push(getFloat());
 }
@@ -478,7 +478,7 @@ void LottieParser::parseProperty(T& prop, LottieObject* obj)
             //append object if the slot already exists.
             for (auto slot = comp->slots.begin(); slot < comp->slots.end(); ++slot) {
                 if (strcmp((*slot)->sid, sid)) continue;
-                (*slot)->objs.push(obj);
+                (*slot)->pairs.push({obj});
                 return;
             }
             comp->slots.push(new LottieSlot(sid, obj, type));
@@ -700,7 +700,7 @@ LottieRoundedCorner* LottieParser::parseRoundedCorner()
 
 void LottieParser::parseGradient(LottieGradient* gradient, const char* key)
 {
-    context->gradient = gradient;
+    context.gradient = gradient;
 
     if (!strcmp(key, "t")) gradient->id = getInt();
     else if (!strcmp(key, "o")) parseProperty<LottieProperty::Type::Opacity>(gradient->opacity, gradient);
@@ -911,6 +911,7 @@ LottieObject* LottieParser::parseAsset()
     }
     if (data) obj = parseImage(data, subPath, embedded);
     if (obj) obj->name = id;
+    else free(id);
     return obj;
 }
 
@@ -1132,7 +1133,7 @@ LottieLayer* LottieParser::parseLayer()
     if (!layer) return nullptr;
 
     layer->comp = comp;
-    context->layer = layer;
+    context.layer = layer;
 
     auto ddd = false;
 
@@ -1238,21 +1239,22 @@ void LottieParser::postProcess(Array<LottieGlyph*>& glyphes)
 /* External Class Implementation                                        */
 /************************************************************************/
 
-const char* LottieParser::sid()
+const char* LottieParser::sid(bool first)
 {
-    //verify json
-    if (!parseNext()) return nullptr;
-    enterObject();
+    if (first) {
+        //verify json
+        if (!parseNext()) return nullptr;
+        enterObject();
+    }
     return nextObjectKey();
 }
 
 
-bool LottieParser::parse(LottieSlot* slot)
+bool LottieParser::apply(LottieSlot* slot)
 {
     enterObject();
 
-    LottieParser::Context context;
-    this->context = &context;
+    //OPTIMIZE: we can create the property directly, without object
     LottieObject* obj = nullptr;  //slot object
 
     switch (slot->type) {
@@ -1277,10 +1279,7 @@ bool LottieParser::parse(LottieSlot* slot)
 
     if (!obj || Invalid()) return false;
 
-    //apply slot object to all targets
-    for (auto target = slot->objs.begin(); target < slot->objs.end(); ++target) {
-        (*target)->override(obj);
-    }
+    slot->assign(obj);
 
     delete(obj);
 
@@ -1301,10 +1300,6 @@ bool LottieParser::parse()
 
     Array<LottieGlyph*> glyphes;
 
-    //assign parsing context
-    LottieParser::Context context;
-    this->context = &context;
-
     while (auto key = nextObjectKey()) {
         if (!strcmp(key, "v")) comp->version = getStringCopy();
         else if (!strcmp(key, "fr")) comp->frameRate = getFloat();
@@ -1320,7 +1315,10 @@ bool LottieParser::parse()
         else skip(key);
     }
 
-    if (Invalid() || !comp->root) return false;
+    if (Invalid() || !comp->root) {
+        delete(comp);
+        return false;
+    }
 
     comp->root->inFrame = comp->startFrame;
     comp->root->outFrame = comp->endFrame;

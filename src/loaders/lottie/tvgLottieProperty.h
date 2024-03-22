@@ -204,6 +204,7 @@ uint32_t bsearch(T* frames, float frameNo)
 struct LottieProperty
 {
     enum class Type : uint8_t { Point = 0, Float, Opacity, Color, PathSet, ColorStop, Position, TextDoc, Invalid };
+    virtual ~LottieProperty() {}
 };
 
 
@@ -215,8 +216,14 @@ struct LottieGenericProperty : LottieProperty
     T value;
 
     LottieGenericProperty(T v) : value(v) {}
+    LottieGenericProperty() {}
 
     ~LottieGenericProperty()
+    {
+        release();
+    }
+
+    void release()
     {
         delete(frames);
     }
@@ -252,7 +259,6 @@ struct LottieGenericProperty : LottieProperty
     T& operator=(const T& other)
     {
         //shallow copy, used for slot overriding
-        delete(frames);
         if (other.frames) {
             frames = other.frames;
             const_cast<T&>(other).frames = nullptr;
@@ -272,10 +278,16 @@ struct LottiePathSet : LottieProperty
 
     ~LottiePathSet()
     {
+        release();
+    }
+
+    void release()
+    {
         free(value.cmds);
         free(value.pts);
 
         if (!frames) return;
+
         for (auto p = frames->begin(); p < frames->end(); ++p) {
             free((*p).value.cmds);
             free((*p).value.pts);
@@ -361,6 +373,7 @@ struct LottieColorStop : LottieProperty
     Array<LottieScalarFrame<ColorStop>>* frames = nullptr;
     ColorStop value;
     uint16_t count = 0;     //colorstop count
+    bool populated = false;
 
     ~LottieColorStop()
     {
@@ -454,15 +467,16 @@ struct LottieColorStop : LottieProperty
     LottieColorStop& operator=(const LottieColorStop& other)
     {
         //shallow copy, used for slot overriding
-        release();
         if (other.frames) {
             frames = other.frames;
             const_cast<LottieColorStop&>(other).frames = nullptr;
         } else {
             value = other.value;
-            const_cast<LottieColorStop&>(other).value.data = nullptr;
+            const_cast<LottieColorStop&>(other).value = {nullptr, nullptr};
         }
+        populated = other.populated;
         count = other.count;
+
         return *this;
     }
 
@@ -480,6 +494,11 @@ struct LottiePosition : LottieProperty
     }
 
     ~LottiePosition()
+    {
+        release();
+    }
+
+    void release()
     {
         delete(frames);
     }
@@ -593,7 +612,6 @@ struct LottieTextDoc : LottieProperty
     LottieTextDoc& operator=(const LottieTextDoc& other)
     {
         //shallow copy, used for slot overriding
-        release();
         if (other.frames) {
             frames = other.frames;
             const_cast<LottieTextDoc&>(other).frames = nullptr;
