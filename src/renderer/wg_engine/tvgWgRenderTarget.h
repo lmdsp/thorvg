@@ -25,30 +25,56 @@
 
 #include "tvgWgRenderData.h"
 
-class WgRenderTarget {
+class WgRenderStorage {
 private:
-    // command buffer
+    // texture buffers
+    WgBindGroupCanvas mBindGroupCanvas;
     WGPURenderPassEncoder mRenderPassEncoder{};
-    // fill and blit data
-    WgBindGroupCanvas mBindGroupCanvasWnd;
-    // gpu buffers
-    WGPUSampler mSampler{};
-    WGPUTexture mTextureColor{};
-    WGPUTexture mTextureStencil{};
-    WGPUTextureView mTextureViewColor{};
-    WGPUTextureView mTextureViewStencil{};
     WgPipelines* mPipelines{}; // external handle
 public:
-    void initialize(WgContext& context, WgPipelines& pipelines, uint32_t w, uint32_t h);
+    WGPUTexture texColor{};
+    WGPUTexture texStencil{};
+    WGPUTextureView texViewColor{};
+    WGPUTextureView texViewStencil{};
+    WgBindGroupTextureStorage bindGroupTexStorage;
+    uint32_t width{};
+    uint32_t height{};
+    uint32_t workgroupsCountX{};
+    uint32_t workgroupsCountY{};
+public:
+    void initialize(WgContext& context, uint32_t w, uint32_t h, uint32_t samples = 1);
     void release(WgContext& context);
 
-    void beginRenderPass(WGPUCommandEncoder commandEncoder, WGPUTextureView colorAttachement);
-    void beginRenderPass(WGPUCommandEncoder commandEncoder);
+    void beginRenderPass(WGPUCommandEncoder commandEncoder, bool clear);
     void endRenderPass();
 
-    void renderShape(WgRenderDataShape* renderData);
-    void renderStroke(WgRenderDataShape* renderData);
-    void renderPicture(WgRenderDataPicture* renderData);
+    void renderShape(WgRenderDataShape* renderData, WgPipelineBlendType blendType);
+    void renderPicture(WgRenderDataPicture* renderData, WgPipelineBlendType blendType);
+
+    void clear(WGPUCommandEncoder commandEncoder);
+    void blend(WGPUCommandEncoder commandEncoder, WgRenderStorage* targetSrc, WgBindGroupBlendMethod* blendMethod);
+    void compose(WGPUCommandEncoder commandEncoder, WgRenderStorage* targetMsk, WgBindGroupCompositeMethod* composeMethod, WgBindGroupOpacity* opacity);
+    void antialias(WGPUCommandEncoder commandEncoder, WgRenderStorage* targetSrc);
+private:
+    void drawShape(WgRenderDataShape* renderData, WgPipelineBlendType blendType);
+    void drawStroke(WgRenderDataShape* renderData, WgPipelineBlendType blendType);
+
+    void dispatchWorkgroups(WGPUComputePassEncoder computePassEncoder);
+
+    WGPUComputePassEncoder beginComputePass(WGPUCommandEncoder commandEncoder);
+    void endComputePass(WGPUComputePassEncoder computePassEncoder);
 };
+
+
+class WgRenderStoragePool {
+private:
+   Array<WgRenderStorage*> mList;
+   Array<WgRenderStorage*> mPool;
+public:
+   WgRenderStorage* allocate(WgContext& context, uint32_t w, uint32_t h);
+   void free(WgContext& context, WgRenderStorage* renderTarget);
+   void release(WgContext& context);
+};
+
 
 #endif

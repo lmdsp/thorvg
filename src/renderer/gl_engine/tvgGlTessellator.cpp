@@ -25,7 +25,6 @@
 #include "tvgGlList.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstdint>
 
@@ -662,8 +661,10 @@ static bool _validEdgePair(Edge* left, Edge* right) {
 bool ActiveEdgeList::valid()
 {
     auto left = head;
-    if (!left) {
+    if (!left && !tail) {
         return true;
+    } else if (!left || !tail) {
+        return false;
     }
 
     for(auto right = left->right; right; right = right->right) {
@@ -814,12 +815,11 @@ static float _downScaleFloat(float v)
     return v / 1000.f;
 }
 
-static uint32_t _pushVertex(Array<float> *array, float x, float y, float z)
+static uint32_t _pushVertex(Array<float> *array, float x, float y)
 {
     array->push(x);
     array->push(y);
-    array->push(z);
-    return (array->count - 3) / 3;
+    return (array->count - 2) / 2;
 }
 
 enum class Orientation
@@ -898,7 +898,7 @@ Tessellator::~Tessellator()
 }
 
 
-void Tessellator::tessellate(const RenderShape *rshape, bool antialias)
+bool Tessellator::tessellate(const RenderShape *rshape, bool antialias)
 {
     auto cmds = rshape->path.cmds.data;
     auto cmdCnt = rshape->path.cmds.count;
@@ -913,9 +913,9 @@ void Tessellator::tessellate(const RenderShape *rshape, bool antialias)
 
     this->mergeVertices();
 
-    this->simplifyMesh();
+    if (!this->simplifyMesh()) return false;
 
-    this->tessMesh();
+    if (!this->tessMesh()) return false;
 
     // output triangles
     for (auto poly = this->pPolygon; poly; poly = poly->next) {
@@ -935,6 +935,8 @@ void Tessellator::tessellate(const RenderShape *rshape, bool antialias)
     if (antialias) {
         // TODO extract outline from current polygon list and generate aa edges
     }
+
+    return true;
 }
 
 void Tessellator::tessellate(const Array<const RenderShape *> &shapes)
@@ -1085,7 +1087,7 @@ void Tessellator::mergeVertices()
     for (auto v = pMesh->head->next; v;) {
         auto next = v->next;
 
-        if (detail::VertexCompare::compare(v->point, v->prev->point)) {
+        if (detail::VertexCompare::compare(v->point, v->prev->point) || detail::_pointLength(v->point - v->prev->point) <= 0.025f) {
             // already sorted, this means these two points is same
             v->point = v->prev->point;
         }
@@ -1107,7 +1109,7 @@ void Tessellator::mergeVertices()
     }
 }
 
-void Tessellator::simplifyMesh()
+bool Tessellator::simplifyMesh()
 {
     /// this is a basic sweep line algorithm
     /// https://www.youtube.com/watch?v=qkhUNzCGDt0&t=293s
@@ -1134,6 +1136,11 @@ void Tessellator::simplifyMesh()
             v->left = left_enclosing;
             v->right = right_enclosing;
 
+            if (!ael.valid()) {
+                // If AEL is not valid, means we meet the problem caused by floating point precision
+                return false;
+            }
+
             if (v->edge_below.head) {
                 for (auto e = v->edge_below.head; e; e = e->below_next) {
                     // check current edge is intersected by left or right neighbor edges
@@ -1154,7 +1161,7 @@ void Tessellator::simplifyMesh()
 
         if (!ael.valid()) {
             // If AEL is not valid, means we meet the problem caused by floating point precision
-            return;
+            return false;
         }
 
         // we are done for all edge end with current point
@@ -1170,9 +1177,11 @@ void Tessellator::simplifyMesh()
             left = e;
         }
     }
+
+    return true;
 }
 
-void Tessellator::tessMesh()
+bool Tessellator::tessMesh()
 {
     /// this function also use sweep line algorithm
     /// but during the process, we calculate the winding number of left and right
@@ -1184,6 +1193,8 @@ void Tessellator::tessMesh()
         if (!v->isConnected()) {
             continue;
         }
+
+        if (!ael.valid()) return false;
 
         detail::Edge *left_enclosing = nullptr;
         detail::Edge *right_enclosing = nullptr;
@@ -1315,6 +1326,8 @@ void Tessellator::tessMesh()
             v->edge_below.tail->right_poly = right_poly;
         }
     }
+
+    return true;
 }
 
 bool Tessellator::matchFillRule(int32_t winding)
@@ -1613,11 +1626,11 @@ void Tessellator::emitTriangle(detail::Vertex *p1, detail::Vertex *p2, detail::V
 {
     // check if index is generated
     if (p1->index == 0xFFFFFFFF)
-        p1->index = detail::_pushVertex(resGlPoints, detail::_downScaleFloat(p1->point.x), detail::_downScaleFloat(p1->point.y), 1.f);
+        p1->index = detail::_pushVertex(resGlPoints, detail::_downScaleFloat(p1->point.x), detail::_downScaleFloat(p1->point.y));
     if (p2->index == 0xFFFFFFFF)
-        p2->index = detail::_pushVertex(resGlPoints, detail::_downScaleFloat(p2->point.x), detail::_downScaleFloat(p2->point.y), 1.f);
+        p2->index = detail::_pushVertex(resGlPoints, detail::_downScaleFloat(p2->point.x), detail::_downScaleFloat(p2->point.y));
     if (p3->index == 0xFFFFFFFF)
-        p3->index = detail::_pushVertex(resGlPoints, detail::_downScaleFloat(p3->point.x), detail::_downScaleFloat(p3->point.y), 1.f);
+        p3->index = detail::_pushVertex(resGlPoints, detail::_downScaleFloat(p3->point.x), detail::_downScaleFloat(p3->point.y));
 
     resIndices->push(p1->index);
     resIndices->push(p2->index);
@@ -1728,10 +1741,10 @@ void Stroker::strokeLineTo(const GlPoint &curr)
     auto c = curr + normal * strokeRadius();
     auto d = curr - normal * strokeRadius();
 
-    auto ia = detail::_pushVertex(mResGlPoints, a.x, a.y, 1.f);
-    auto ib = detail::_pushVertex(mResGlPoints, b.x, b.y, 1.f);
-    auto ic = detail::_pushVertex(mResGlPoints, c.x, c.y, 1.f);
-    auto id = detail::_pushVertex(mResGlPoints, d.x, d.y, 1.f);
+    auto ia = detail::_pushVertex(mResGlPoints, a.x, a.y);
+    auto ib = detail::_pushVertex(mResGlPoints, b.x, b.y);
+    auto ic = detail::_pushVertex(mResGlPoints, c.x, c.y);
+    auto id = detail::_pushVertex(mResGlPoints, d.x, d.y);
 
     /**
      *   a --------- c
@@ -1852,9 +1865,9 @@ void Stroker::strokeRound(const GlPoint &prev, const GlPoint &curr, const GlPoin
     // Fixme: just use bezier curve to calculate step count
     auto count = detail::_bezierCurveCount(detail::_bezFromArc(prev, curr, strokeRadius()));
 
-    auto c = detail::_pushVertex(mResGlPoints, center.x, center.y, 1.f);
+    auto c = detail::_pushVertex(mResGlPoints, center.x, center.y);
 
-    auto pi = detail::_pushVertex(mResGlPoints, prev.x, prev.y, 1.f);
+    auto pi = detail::_pushVertex(mResGlPoints, prev.x, prev.y);
 
     float step = 1.f / (count - 1);
 
@@ -1869,7 +1882,7 @@ void Stroker::strokeRound(const GlPoint &prev, const GlPoint &curr, const GlPoin
 
         auto out = center + o_dir * strokeRadius();
 
-        auto oi = detail::_pushVertex(mResGlPoints, out.x, out.y, 1.f);
+        auto oi = detail::_pushVertex(mResGlPoints, out.x, out.y);
 
         this->mResIndices->push(c);
         this->mResIndices->push(pi);
@@ -1897,12 +1910,12 @@ void Stroker::strokeMiter(const GlPoint &prev, const GlPoint &curr, const GlPoin
 
     auto join = center + pe;
 
-    auto c = detail::_pushVertex(mResGlPoints, center.x, center.y, 1.f);
+    auto c = detail::_pushVertex(mResGlPoints, center.x, center.y);
 
-    auto cp1 = detail::_pushVertex(mResGlPoints, prev.x, prev.y, 1.f);
-    auto cp2 = detail::_pushVertex(mResGlPoints, curr.x, curr.y, 1.f);
+    auto cp1 = detail::_pushVertex(mResGlPoints, prev.x, prev.y);
+    auto cp2 = detail::_pushVertex(mResGlPoints, curr.x, curr.y);
 
-    auto e = detail::_pushVertex(mResGlPoints, join.x, join.y, 1.f);
+    auto e = detail::_pushVertex(mResGlPoints, join.x, join.y);
 
     this->mResIndices->push(c);
     this->mResIndices->push(cp1);
@@ -1915,9 +1928,9 @@ void Stroker::strokeMiter(const GlPoint &prev, const GlPoint &curr, const GlPoin
 
 void Stroker::strokeBevel(const GlPoint &prev, const GlPoint &curr, const GlPoint &center)
 {
-    auto a = detail::_pushVertex(mResGlPoints, prev.x, prev.y, 1.f);
-    auto b = detail::_pushVertex(mResGlPoints, curr.x, curr.y, 1.f);
-    auto c = detail::_pushVertex(mResGlPoints, center.x, center.y, 1.f);
+    auto a = detail::_pushVertex(mResGlPoints, prev.x, prev.y);
+    auto b = detail::_pushVertex(mResGlPoints, curr.x, curr.y);
+    auto c = detail::_pushVertex(mResGlPoints, center.x, center.y);
 
     mResIndices->push(a);
     mResIndices->push(b);
@@ -2090,6 +2103,89 @@ void DashStroke::cubicTo(const GlPoint &cnt1, const GlPoint &cnt2, const GlPoint
     mPts->push(Point{cnt2.x, cnt2.y});
     mPts->push(Point{end.x, end.y});
     mCmds->push(PathCommand::CubicTo);
+}
+
+
+BWTessellator::BWTessellator(Array<float>* points, Array<uint32_t>* indices): mResPoints(points), mResIndices(indices)
+{
+}
+
+void BWTessellator::tessellate(const RenderShape *rshape)
+{
+    auto cmds = rshape->path.cmds.data;
+    auto cmdCnt = rshape->path.cmds.count;
+    auto pts = rshape->path.pts.data;
+    auto ptsCnt = rshape->path.pts.count;
+
+    if (ptsCnt <= 2) return;
+
+    uint32_t firstIndex = 0;
+    uint32_t prevIndex = 0;
+
+    mResPoints->reserve(ptsCnt * 2);
+    mResIndices->reserve((ptsCnt - 2) * 3);
+
+    for (uint32_t i = 0; i < cmdCnt; i++) {
+        switch(cmds[i]) {
+            case PathCommand::MoveTo: {
+                firstIndex = pushVertex(pts->x, pts->y);
+                prevIndex = 0;
+                pts++;
+            } break;
+            case PathCommand::LineTo: {
+                if (prevIndex == 0) {
+                    prevIndex = pushVertex(pts->x, pts->y);
+                    pts++;
+                } else {
+                    auto currIndex = pushVertex(pts->x, pts->y);
+
+                    pushTriangle(firstIndex, prevIndex, currIndex);
+
+                    prevIndex = currIndex;
+                    pts++;
+                }
+            } break;
+            case PathCommand::CubicTo: {
+                Bezier curve{pts[-1], pts[0], pts[1], pts[2]};
+
+                auto stepCount = detail::_bezierCurveCount(curve);
+
+                if (stepCount <= 1) stepCount = 2;
+
+                float step = 1.f / stepCount;
+
+                for (uint32_t s = 1; s < static_cast<uint32_t>(stepCount); s++) {
+                    auto pt = bezPointAt(curve, step * s);
+                    auto currIndex = pushVertex(pt.x, pt.y);
+
+                    if (prevIndex == 0) {
+                        prevIndex = currIndex;
+                        continue;
+                    }
+
+                    pushTriangle(firstIndex, prevIndex, currIndex);
+                    prevIndex = currIndex;
+                }
+
+                pts += 3;
+            } break;
+            case PathCommand::Close:
+            default:
+                break;
+        }
+    }
+}
+
+uint32_t BWTessellator::pushVertex(float x, float y)
+{
+    return detail::_pushVertex(mResPoints, x, y);
+}
+
+void BWTessellator::pushTriangle(uint32_t a, uint32_t b, uint32_t c)
+{
+    mResIndices->push(a);
+    mResIndices->push(b);
+    mResIndices->push(c);
 }
 
 }  // namespace tvg

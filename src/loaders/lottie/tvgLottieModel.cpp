@@ -50,7 +50,7 @@ void LottieTrimpath::segment(float frameNo, float& start, float& end)
 {
     auto s = this->start(frameNo) * 0.01f;
     auto e = this->end(frameNo) * 0.01f;
-    auto o = fmod(this->offset(frameNo), 360.0f) / 360.0f;  //0 ~ 1
+    auto o = fmodf(this->offset(frameNo), 360.0f) / 360.0f;  //0 ~ 1
 
     auto diff = fabs(s - e);
     if (mathZero(diff)) {
@@ -142,14 +142,20 @@ void LottieGroup::prepare(LottieObject::Type type)
     size_t fillCnt = 0;
 
     for (auto c = children.end() - 1; c >= children.begin(); --c) {
-        if (reqFragment && !statical) break;
         auto child = static_cast<LottieObject*>(*c);
-        if (statical) statical &= child->statical;
+
+        if (child->type == LottieObject::Type::Trimpath) trimpath = true;
+
+        /* Figure out if this group is a simple path drawing.
+           In that case, the rendering context can be sharable with the parent's. */
+        if (allowMerge && (child->type == LottieObject::Group || !child->mergeable())) allowMerge = false;
+
+        if (reqFragment) continue;
+
         /* Figure out if the rendering context should be fragmented.
            Multiple stroking or grouping with a stroking would occur this.
            This fragment resolves the overlapped stroke outlines. */
-        if (reqFragment) continue;
-        if (child->type == LottieObject::Group) {
+        if (child->type == LottieObject::Group && !child->mergeable()) {
             if (strokeCnt > 0 || fillCnt > 0) reqFragment = true;
         } else if (child->type == LottieObject::SolidStroke || child->type == LottieObject::GradientStroke) {
             if (strokeCnt > 0) reqFragment = true;
@@ -158,6 +164,25 @@ void LottieGroup::prepare(LottieObject::Type type)
             if (fillCnt > 0) reqFragment = true;
             else ++fillCnt;
         }
+    }
+
+    //Reverse the drawing order if this group has a trimpath.
+    if (!trimpath) return;
+
+    for (uint32_t i = 0; i < children.count - 1; ) {
+        auto child2 = children[i + 1];
+        if (!child2->mergeable() || child2->type == LottieObject::Transform) {
+            i += 2;
+            continue;
+        }
+        auto child = children[i];
+        if (!child->mergeable() || child->type == LottieObject::Transform) {
+            i++;
+            continue;
+        }
+        children[i] = child2;
+        children[i + 1] = child;
+        i++;
     }
 }
 
@@ -180,11 +205,8 @@ LottieLayer::~LottieLayer()
 
 void LottieLayer::prepare()
 {
-    if (transform) statical &= transform->statical;
-    if (timeRemap.frames) statical = false;
-
     /* if layer is hidden, only useful data is its transform matrix.
-        so force it to be a Null Layer and release all resource. */
+       so force it to be a Null Layer and release all resource. */
     if (hidden) {
         type = LottieLayer::Null;
         children.reset();

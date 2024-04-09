@@ -32,8 +32,12 @@ GlRenderTarget::~GlRenderTarget()
     GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, 0));
     GL_CHECK(glDeleteFramebuffers(1, &mFbo));
 
-    if (mColorTex == 0) return;
-    GL_CHECK(glDeleteTextures(1, &mColorTex));
+    if (mColorTex != 0) {
+        GL_CHECK(glDeleteTextures(1, &mColorTex));
+    }
+    if (mStencilBuffer != 0) {
+        GL_CHECK(glDeleteRenderbuffers(1, &mStencilBuffer));
+    }
 }
 
 void GlRenderTarget::init(GLint resolveId)
@@ -44,6 +48,22 @@ void GlRenderTarget::init(GLint resolveId)
 
     GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, mFbo));
 
+    GL_CHECK(glGenRenderbuffers(1, &mColorBuffer));
+    GL_CHECK(glBindRenderbuffer(GL_RENDERBUFFER, mColorBuffer));
+    GL_CHECK(glRenderbufferStorageMultisample(GL_RENDERBUFFER, 4, GL_RGBA8, mWidth, mHeight));
+
+    GL_CHECK(glGenRenderbuffers(1, &mStencilBuffer));
+
+    GL_CHECK(glBindRenderbuffer(GL_RENDERBUFFER, mStencilBuffer));
+
+    GL_CHECK(glRenderbufferStorageMultisample(GL_RENDERBUFFER, 4, GL_STENCIL_INDEX8, mWidth, mHeight));
+
+    GL_CHECK(glBindRenderbuffer(GL_RENDERBUFFER, 0));
+
+    GL_CHECK(glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, mColorBuffer));
+    GL_CHECK(glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, mStencilBuffer));
+
+    // resolve target
     GL_CHECK(glGenTextures(1, &mColorTex));
 
     GL_CHECK(glBindTexture(GL_TEXTURE_2D, mColorTex));
@@ -56,6 +76,8 @@ void GlRenderTarget::init(GLint resolveId)
 
     GL_CHECK(glBindTexture(GL_TEXTURE_2D, 0));
 
+    GL_CHECK(glGenFramebuffers(1, &mResolveFbo));
+    GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, mResolveFbo));
     GL_CHECK(glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mColorTex, 0));
 
     GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, resolveId));

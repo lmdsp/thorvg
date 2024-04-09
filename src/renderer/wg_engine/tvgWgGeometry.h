@@ -84,14 +84,29 @@ struct WgGeometryData
     // webgpu did not support triangle fans primitives type
     // so we can emulate triangle fans using indexing
     void computeTriFansIndexes();
+    void computeContour(WgGeometryData* data);
 
     void appendCubic(WgPoint p1, WgPoint p2, WgPoint p3);
     void appendBox(WgPoint pmin, WgPoint pmax);
     void appendRect(WgPoint p0, WgPoint p1, WgPoint p2, WgPoint p3);
     void appendCircle(WgPoint center, float radius);
     void appendImageBox(float w, float h);
+    void appendBlitBox();
     void appendMesh(const RenderMesh* rmesh);
+
+    WgPoint interpolate(float t, uint32_t& ind); // t = [0;1]
+
+    float getLength();
+    bool getClosestIntersection(WgPoint p1, WgPoint p2, WgPoint& pi, uint32_t& index);
+    bool isCW(WgPoint p1, WgPoint p2, WgPoint p3);
+
+    uint32_t getIndexMinX();
+    uint32_t getIndexMaxX();
+    uint32_t getIndexMinY();
+    uint32_t getIndexMaxY();
+
     void close();
+    void clear();
 };
 
 struct WgGeometryDataGroup
@@ -104,9 +119,11 @@ struct WgGeometryDataGroup
     void stroke(const RenderShape& rshape);
     void release();
 private:
-    static void decodePath(const RenderShape& rshape, WgGeometryDataGroup* outlines);
-    static void strokeSegments(const RenderShape& rshape, WgGeometryDataGroup* outlines, WgGeometryDataGroup* segments);
-    static void strokeSublines(const RenderShape& rshape, WgGeometryDataGroup* outlines, WgGeometryData* strokes);
+    static void decodePath(const RenderShape& rshape, WgGeometryDataGroup* polyline);
+    static void contourPolyline(WgGeometryDataGroup* polyline, WgGeometryDataGroup* contours);
+    static void trimPolyline(WgGeometryDataGroup* polyline, WgGeometryDataGroup* trimmed, RenderStroke *stroke);
+    static void splitPolyline(WgGeometryDataGroup* polyline, WgGeometryDataGroup* splitted, RenderStroke *stroke);
+    static void strokePolyline(WgGeometryDataGroup* polyline, WgGeometryData* strokes, RenderStroke *stroke);
 };
 
 #endif // _TVG_WG_GEOMETRY_H_

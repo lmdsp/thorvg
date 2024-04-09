@@ -7,6 +7,7 @@ test_file = [
     'testAnimation.cpp',
     'testFill.cpp',
     'testInitializer.cpp',
+    'testLottie.cpp',
     'testMain.cpp',
     'testPaint.cpp',
     'testPicture.cpp',
@@ -16,6 +17,7 @@ test_file = [
     'testSwCanvas.cpp',
     'testSwCanvasBase.cpp',
     'testSwEngine.cpp',
+    'testText.cpp'
 ]
 
 tests = executable('tvgUnitTests',

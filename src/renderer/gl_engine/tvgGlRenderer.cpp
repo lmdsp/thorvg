@@ -55,11 +55,11 @@ bool GlRenderer::clear()
 }
 
 
-bool GlRenderer::target(TVG_UNUSED uint32_t* buffer, uint32_t stride, uint32_t w, uint32_t h)
+bool GlRenderer::target(int32_t id, uint32_t w, uint32_t h)
 {
-    assert(w > 0 && h > 0);
+    if (id == GL_INVALID_VALUE || w == 0 || h == 0) return false;
 
-    surface.stride = stride;
+    surface.stride = w;
     surface.w = w;
     surface.h = h;
 
@@ -68,10 +68,12 @@ bool GlRenderer::target(TVG_UNUSED uint32_t* buffer, uint32_t stride, uint32_t w
     mViewport.w = surface.w;
     mViewport.h = surface.h;
 
-    // get current binded framebuffer id
-    // EFL seems has a seperate framebuffer for evagl view
-    //TODO: introduce a new api to specify which fbo this canvas is binded
-    GL_CHECK(glGetIntegerv(GL_FRAMEBUFFER_BINDING, &mTargetFboId));
+    mTargetFboId = static_cast<GLint>(id);
+
+    //TODO: It's not allow to draw onto the main surface. Need to confirm the policy.
+    if (mTargetFboId == 0) {
+        GL_CHECK(glGetIntegerv(GL_FRAMEBUFFER_BINDING, &mTargetFboId));
+    }
 
     mRootTarget = make_unique<GlRenderTarget>(surface.w, surface.h);
     mRootTarget->init(mTargetFboId);
@@ -88,9 +90,11 @@ bool GlRenderer::sync()
     mGpuBuffer->flushToGPU();
 
     // Blend function for straight alpha
-    GL_CHECK(glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA));
+    GL_CHECK(glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA));
     GL_CHECK(glEnable(GL_BLEND));
     GL_CHECK(glEnable(GL_SCISSOR_TEST));
+    GL_CHECK(glCullFace(GL_FRONT_AND_BACK));
+    GL_CHECK(glFrontFace(GL_CCW));
 
     mGpuBuffer->bind();
 
@@ -267,12 +271,17 @@ bool GlRenderer::renderShape(RenderData data)
         }
     }
 
-    if (flags & (RenderUpdateFlag::Stroke | RenderUpdateFlag::Transform))
+    if (flags & (RenderUpdateFlag::Stroke | RenderUpdateFlag::GradientStroke | RenderUpdateFlag::Transform))
     {
-        sdata->rshape->strokeColor(&r, &g, &b, &a);
-        if (a > 0)
-        {
-            drawPrimitive(*sdata, r, g, b, a, RenderUpdateFlag::Stroke);
+        auto gradient =  sdata->rshape->strokeFill();
+        if (gradient) {
+            drawPrimitive(*sdata, gradient, RenderUpdateFlag::GradientStroke);
+        } else {
+            sdata->rshape->strokeColor(&r, &g, &b, &a);
+            if (a > 0)
+            {
+                drawPrimitive(*sdata, r, g, b, a, RenderUpdateFlag::Stroke);
+            }
         }
     }
 
@@ -479,6 +488,8 @@ void GlRenderer::initShaders()
     mPrograms.push_back(make_unique<GlProgram>(GlShader::gen(MASK_VERT_SHADER, MASK_SUB_FRAG_SHADER)));
     mPrograms.push_back(make_unique<GlProgram>(GlShader::gen(MASK_VERT_SHADER, MASK_INTERSECT_FRAG_SHADER)));
     mPrograms.push_back(make_unique<GlProgram>(GlShader::gen(MASK_VERT_SHADER, MASK_DIFF_FRAG_SHADER)));
+    // stencil Renderer
+    mPrograms.push_back(make_unique<GlProgram>(GlShader::gen(STENCIL_VERT_SHADER, STENCIL_FRAG_SHADER)));
 }
 
 
@@ -488,22 +499,39 @@ void GlRenderer::drawPrimitive(GlShape& sdata, uint8_t r, uint8_t g, uint8_t b, 
 
     if (!sdata.geometry->draw(task, mGpuBuffer.get(), flag)) return;
 
+    GlRenderTask* stencilTask = nullptr;
+
+    GlStencilMode stencilMode = sdata.geometry->getStencilMode(flag);
+    if (stencilMode != GlStencilMode::None) stencilTask = new GlRenderTask(mPrograms[RT_Stencil].get(), task);
+
     a = MULTIPLY(a, sdata.opacity);
-    
+
     // matrix buffer
     {
         auto matrix = sdata.geometry->getTransforMatrix();
         uint32_t loc = task->getProgram()->getUniformBlockIndex("Matrix");
 
+        uint32_t viewOffset = mGpuBuffer->push(matrix, 16 * sizeof(float), true);
+
         task->addBindResource(GlBindingResource{
             0,
             loc,
             mGpuBuffer->getBufferId(),
-            mGpuBuffer->push(matrix, 16 * sizeof(float), true),
+            viewOffset,
             16 * sizeof(float),
         });
+
+        if (stencilTask) {
+            stencilTask->addBindResource(GlBindingResource{
+                0,
+                static_cast<uint32_t>(stencilTask->getProgram()->getUniformBlockIndex("Matrix")),
+                mGpuBuffer->getBufferId(),
+                viewOffset,
+                16 * sizeof(float),
+            });
+        }
     }
-    // color 
+    // color
     {
         float color[4] = {r / 255.f, g / 255.f, b / 255.f, a / 255.f};
 
@@ -518,7 +546,11 @@ void GlRenderer::drawPrimitive(GlShape& sdata, uint8_t r, uint8_t g, uint8_t b, 
         });
     }
 
-    currentPass()->addRenderTask(task);
+    if (stencilTask) {
+        currentPass()->addRenderTask(new GlStencilCoverTask(stencilTask, task, stencilMode));
+    } else {
+        currentPass()->addRenderTask(task);
+    }
 }
 
 
@@ -541,18 +573,34 @@ void GlRenderer::drawPrimitive(GlShape& sdata, const Fill* fill, RenderUpdateFla
 
     if (!sdata.geometry->draw(task, mGpuBuffer.get(), flag)) return;
 
+    GlRenderTask* stencilTask = nullptr;
+    GlStencilMode stencilMode = sdata.geometry->getStencilMode(flag);
+    if (stencilMode != GlStencilMode::None) stencilTask = new GlRenderTask(mPrograms[RT_Stencil].get(), task);
+
     // matrix buffer
     {
         auto matrix = sdata.geometry->getTransforMatrix();
         uint32_t loc = task->getProgram()->getUniformBlockIndex("Matrix");
 
+        uint32_t viewOffset = mGpuBuffer->push(matrix, 16 * sizeof(float), true);
+
         task->addBindResource(GlBindingResource{
             0,
             loc,
             mGpuBuffer->getBufferId(),
-            mGpuBuffer->push(matrix, 16 * sizeof(float), true),
+            viewOffset,
             16 * sizeof(float),
         });
+
+        if (stencilTask) {
+            stencilTask->addBindResource(GlBindingResource{
+                0,
+                static_cast<uint32_t>(stencilTask->getProgram()->getUniformBlockIndex("Matrix")),
+                mGpuBuffer->getBufferId(),
+                viewOffset,
+                16 * sizeof(float),
+            });
+        }
     }
 
     // gradient block
@@ -567,6 +615,7 @@ void GlRenderer::drawPrimitive(GlShape& sdata, const Fill* fill, RenderUpdateFla
 
             gradientBlock.nStops[0] = stopCnt * 1.f;
             gradientBlock.nStops[1] = NOISE_LEVEL;
+            gradientBlock.nStops[2] = static_cast<int32_t>(fill->spread()) * 1.f;
             for (uint32_t i = 0; i < stopCnt; ++i) {
                 gradientBlock.stopPoints[i] = stops[i].offset;
                 gradientBlock.stopColors[i * 4 + 0] = stops[i].r / 255.f;
@@ -599,6 +648,7 @@ void GlRenderer::drawPrimitive(GlShape& sdata, const Fill* fill, RenderUpdateFla
 
             gradientBlock.nStops[0] = stopCnt * 1.f;
             gradientBlock.nStops[1] = NOISE_LEVEL;
+            gradientBlock.nStops[2] = static_cast<int32_t>(fill->spread()) * 1.f;
             for (uint32_t i = 0; i < stopCnt; ++i) {
                 gradientBlock.stopPoints[i] = stops[i].offset;
                 gradientBlock.stopColors[i * 4 + 0] = stops[i].r / 255.f;
@@ -628,17 +678,21 @@ void GlRenderer::drawPrimitive(GlShape& sdata, const Fill* fill, RenderUpdateFla
         task->addBindResource(gradientBinding);
     }
 
-    currentPass()->addRenderTask(task);
+    if (stencilTask) {
+        currentPass()->addRenderTask(new GlStencilCoverTask(stencilTask, task, stencilMode));
+    } else {
+        currentPass()->addRenderTask(task);
+    }
 }
 
-GlRenderPass* GlRenderer::currentPass() 
+GlRenderPass* GlRenderer::currentPass()
 {
     if (mRenderPassStack.empty()) return nullptr;
 
     return &mRenderPassStack.back();
 }
 
-void GlRenderer::prepareCmpTask(GlRenderTask* task, float opacity)
+void GlRenderer::prepareCmpTask(GlRenderTask* task)
 {
     // we use 1:1 blit mapping since compositor fbo is same size as root fbo
     Array<float> vertices(5 * 4);
@@ -651,25 +705,21 @@ void GlRenderer::prepareCmpTask(GlRenderTask* task, float opacity)
     // left top point
     vertices.push(left);
     vertices.push(top);
-    vertices.push(opacity);
     vertices.push(0.f);
     vertices.push(1.f);
     // left bottom point
     vertices.push(left);
     vertices.push(bottom);
-    vertices.push(opacity);
     vertices.push(0.f);
     vertices.push(0.f);
     // right top point
     vertices.push(right);
     vertices.push(top);
-    vertices.push(opacity);
     vertices.push(1.f);
     vertices.push(1.f);
     // right bottom point
     vertices.push(right);
     vertices.push(bottom);
-    vertices.push(opacity);
     vertices.push(1.f);
     vertices.push(0.f);
 
@@ -685,8 +735,8 @@ void GlRenderer::prepareCmpTask(GlRenderTask* task, float opacity)
     uint32_t vertexOffset = mGpuBuffer->push(vertices.data, vertices.count * sizeof(float));
     uint32_t indexOffset = mGpuBuffer->push(indices.data, vertices.count * sizeof(uint32_t));
 
-    task->addVertexLayout(GlVertexLayout{0, 3, 5 * sizeof(float), vertexOffset});
-    task->addVertexLayout(GlVertexLayout{1, 2, 5 * sizeof(float), vertexOffset + 3 * sizeof(float)});
+    task->addVertexLayout(GlVertexLayout{0, 2, 4 * sizeof(float), vertexOffset});
+    task->addVertexLayout(GlVertexLayout{1, 2, 4 * sizeof(float), vertexOffset + 2 * sizeof(float)});
 
     task->setDrawRange(indexOffset, indices.count);
     task->setViewport(RenderRegion{
@@ -748,7 +798,7 @@ void GlRenderer::endRenderPass(Compositor* cmp)
 
         auto compose_task = self_pass.endRenderPass<GlDrawBlitTask>(program, currentPass()->getFboId());
 
-        prepareCmpTask(compose_task, cmp->opacity / 255.f);
+        prepareCmpTask(compose_task);
 
         {
             uint32_t loc = program->getUniformLocation("uSrcTexture");
@@ -770,7 +820,7 @@ void GlRenderer::endRenderPass(Compositor* cmp)
         auto task = renderPass.endRenderPass<GlDrawBlitTask>(
             mPrograms[RT_Image].get(), currentPass()->getFboId());
 
-        prepareCmpTask(task, 1.f);
+        prepareCmpTask(task);
 
         // matrix buffer
         {

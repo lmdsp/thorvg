@@ -1645,7 +1645,7 @@ public:
     };
 
     /**
-     * @brief Sets the target buffer for the rasterization.
+     * @brief Sets the drawing target for the rasterization.
      *
      * The buffer of a desirable size should be allocated and owned by the caller.
      *
@@ -1714,13 +1714,22 @@ public:
     ~GlCanvas();
 
     /**
-     * @brief Sets the target buffer for the rasterization.
+     * @brief Sets the drawing target for rasterization.
      *
-     * @warning Please do not use it, this API is not official one. It could be modified in the next version.
+     * This function specifies the drawing target where the rasterization will occur. It can target
+     * a specific framebuffer object (FBO) or the main surface.
      *
+     * @param[in] id The GL target ID, usually indicating the FBO ID. A value of @c 0 specifies the main surface.
+     * @param[in] w The width (in pixels) of the raster image.
+     * @param[in] h The height (in pixels) of the raster image.
+     *
+     * @warning This API is experimental and not officially supported. It may be modified or removed in future versions.
+     * @warning Drawing on the main surface is currently not permitted. If the identifier (@p id) is set to @c 0, the operation will be aborted.
+     *
+     * @note Currently, this only allows the GL_RGBA8 color space format.
      * @note Experimental API
-     */
-    Result target(uint32_t* buffer, uint32_t stride, uint32_t w, uint32_t h) noexcept;
+    */
+    Result target(int32_t id, uint32_t w, uint32_t h) noexcept;
 
     /**
      * @brief Creates a new GlCanvas object.
@@ -1829,7 +1838,6 @@ public:
  *
  * This class supports the display and control of animation frames.
  *
- * @note Experimental API
  */
 
 class TVG_API Animation
@@ -1849,7 +1857,6 @@ public:
      *
      * @see totalFrame()
      *
-     * @note Experimental API
      */
     Result frame(float no) noexcept;
 
@@ -1864,7 +1871,6 @@ public:
      *
      * @warning The picture instance is owned by Animation. It should not be deleted manually.
      *
-     * @note Experimental API
      */
     Picture* picture() const noexcept;
 
@@ -1878,7 +1884,6 @@ public:
      * @see Animation::frame(float no)
      * @see Animation::totalFrame()
      *
-     * @note Experimental API
      */
     float curFrame() const noexcept;
 
@@ -1890,7 +1895,6 @@ public:
      * @note Frame numbering starts from 0.
      * @note If the Picture is not properly configured, this function will return 0.
      *
-     * @note Experimental API
      */
     float totalFrame() const noexcept;
 
@@ -1901,7 +1905,6 @@ public:
      *
      * @note If the Picture is not properly configured, this function will return 0.
      *
-     * @% Experimental API
      */
     float duration() const noexcept;
 
@@ -1910,7 +1913,6 @@ public:
      *
      * @return A new Animation object.
      *
-     * @note Experimental API
      */
     static std::unique_ptr<Animation> gen(Picture* picture = nullptr) noexcept;
 

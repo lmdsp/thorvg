@@ -48,69 +48,64 @@ void WgMeshData::drawImage(WGPURenderPassEncoder renderPassEncoder)
 
 
 void WgMeshData::update(WgContext& context, WgGeometryData* geometryData){
-    release(context);
     assert(geometryData);
+    vertexCount = geometryData->positions.count;
+    indexCount = geometryData->indexes.count;
     // buffer position data create and write
-    if(geometryData->positions.count > 0) {
-        vertexCount = geometryData->positions.count;
-        WGPUBufferDescriptor bufferDesc{};
-        bufferDesc.nextInChain = nullptr;
-        bufferDesc.label = "Buffer position geometry data";
-        bufferDesc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex;
-        bufferDesc.size = sizeof(float) * vertexCount * 2; // x, y
-        bufferDesc.mappedAtCreation = false;
-        bufferPosition = wgpuDeviceCreateBuffer(context.device, &bufferDesc);
-        assert(bufferPosition);
-        wgpuQueueWriteBuffer(context.queue, bufferPosition, 0, &geometryData->positions[0], vertexCount * sizeof(float) * 2);
-    }
-    // buffer vertex data create and write
-    if(geometryData->texCoords.count > 0) {
-        WGPUBufferDescriptor bufferDesc{};
-        bufferDesc.nextInChain = nullptr;
-        bufferDesc.label = "Buffer tex coords geometry data";
-        bufferDesc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Vertex;
-        bufferDesc.size = sizeof(float) * vertexCount * 2; // u, v
-        bufferDesc.mappedAtCreation = false;
-        bufferTexCoord = wgpuDeviceCreateBuffer(context.device, &bufferDesc);
-        assert(bufferPosition);
-        wgpuQueueWriteBuffer(context.queue, bufferTexCoord, 0, &geometryData->texCoords[0], vertexCount * sizeof(float) * 2);
-    }
+    if (geometryData->positions.count > 0)
+        context.allocateVertexBuffer(bufferPosition, &geometryData->positions[0], vertexCount * sizeof(float) * 2);
+    // buffer tex coords data create and write
+    if (geometryData->texCoords.count > 0)
+        context.allocateVertexBuffer(bufferTexCoord, &geometryData->texCoords[0], vertexCount * sizeof(float) * 2);
     // buffer index data create and write
-    if(geometryData->indexes.count > 0) {
-        indexCount = geometryData->indexes.count;
-        WGPUBufferDescriptor bufferDesc{};
-        bufferDesc.nextInChain = nullptr;
-        bufferDesc.label = "Buffer index geometry data";
-        bufferDesc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Index;
-        bufferDesc.size = sizeof(uint32_t) * indexCount;
-        bufferDesc.mappedAtCreation = false;
-        bufferIndex = wgpuDeviceCreateBuffer(context.device, &bufferDesc);
-        assert(bufferIndex);
-        wgpuQueueWriteBuffer(context.queue, bufferIndex, 0, &geometryData->indexes[0], indexCount * sizeof(uint32_t));
-    }
+    if (geometryData->indexes.count > 0)
+        context.allocateIndexBuffer(bufferIndex, &geometryData->indexes[0], indexCount * sizeof(uint32_t));
 };
 
 
 void WgMeshData::release(WgContext& context)
 {
-    if (bufferIndex) { 
-        wgpuBufferDestroy(bufferIndex);
-        wgpuBufferRelease(bufferIndex);
-        bufferIndex = nullptr;
-        indexCount = 0;
-    }
-    if (bufferTexCoord) {
-        wgpuBufferDestroy(bufferTexCoord);
-        wgpuBufferRelease(bufferTexCoord);
-        bufferTexCoord = nullptr;
-    }
-    if (bufferPosition) {
-        wgpuBufferDestroy(bufferPosition);
-        wgpuBufferRelease(bufferPosition);
-        bufferPosition = nullptr;
-        bufferPosition = 0;
-    }
+    context.releaseBuffer(bufferIndex);
+    context.releaseBuffer(bufferTexCoord);
+    context.releaseBuffer(bufferPosition);
 };
+
+
+//***********************************************************************
+// WgMeshDataPool
+//***********************************************************************
+
+WgMeshData* WgMeshDataPool::allocate(WgContext& context)
+{
+    WgMeshData* meshData{};
+    if (mPool.count > 0) {
+        meshData = mPool.last();
+        mPool.pop();
+    } else {
+        meshData = new WgMeshData();
+        mList.push(meshData);
+    }
+    return meshData;
+}
+
+
+void WgMeshDataPool::free(WgContext& context, WgMeshData* meshData)
+{
+    mPool.push(meshData);
+}
+
+
+void WgMeshDataPool::release(WgContext& context)
+{
+    for (uint32_t i = 0; i < mList.count; i++) {
+        mList[i]->release(context);
+        delete mList[i];
+    }
+    mPool.clear();
+    mList.clear();
+}
+
+WgMeshDataPool* WgMeshDataGroup::MeshDataPool = nullptr;
 
 //***********************************************************************
 // WgMeshDataGroup
@@ -122,7 +117,7 @@ void WgMeshDataGroup::update(WgContext& context, WgGeometryDataGroup* geometryDa
     assert(geometryDataGroup);
     for (uint32_t i = 0; i < geometryDataGroup->geometries.count; i++) {
         if (geometryDataGroup->geometries[i]->positions.count > 2) {
-            meshes.push(new WgMeshData());
+            meshes.push(MeshDataPool->allocate(context));
             meshes.last()->update(context, geometryDataGroup->geometries[i]);
         }
     }
@@ -132,9 +127,10 @@ void WgMeshDataGroup::update(WgContext& context, WgGeometryDataGroup* geometryDa
 void WgMeshDataGroup::release(WgContext& context)
 {
     for (uint32_t i = 0; i < meshes.count; i++)
-        meshes[i]->release(context);
+        MeshDataPool->free(context, meshes[i]);
     meshes.clear();
 };
+
 
 //***********************************************************************
 // WgImageData
@@ -144,48 +140,12 @@ void WgImageData::update(WgContext& context, Surface* surface)
 {
     release(context);
     assert(surface);
-    // sampler descriptor
-    WGPUSamplerDescriptor samplerDesc{};
-    samplerDesc.nextInChain = nullptr;
-    samplerDesc.label = "The shape sampler";
-    samplerDesc.addressModeU = WGPUAddressMode_ClampToEdge;
-    samplerDesc.addressModeV = WGPUAddressMode_ClampToEdge;
-    samplerDesc.addressModeW = WGPUAddressMode_ClampToEdge;
-    samplerDesc.magFilter = WGPUFilterMode_Nearest;
-    samplerDesc.minFilter = WGPUFilterMode_Nearest;
-    samplerDesc.mipmapFilter = WGPUMipmapFilterMode_Nearest;
-    samplerDesc.lodMinClamp = 0.0f;
-    samplerDesc.lodMaxClamp = 32.0f;
-    samplerDesc.compare = WGPUCompareFunction_Undefined;
-    samplerDesc.maxAnisotropy = 1;
-    sampler = wgpuDeviceCreateSampler(context.device, &samplerDesc);
-    assert(sampler);
-    // texture descriptor
-    WGPUTextureDescriptor textureDesc{};
-    textureDesc.nextInChain = nullptr;
-    textureDesc.label = "The shape texture";
-    textureDesc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-    textureDesc.dimension = WGPUTextureDimension_2D;
-    textureDesc.size = { surface->w, surface->h, 1 };
-    textureDesc.format = WGPUTextureFormat_RGBA8Unorm;
-    textureDesc.mipLevelCount = 1;
-    textureDesc.sampleCount = 1;
-    textureDesc.viewFormatCount = 0;
-    textureDesc.viewFormats = nullptr;
-    texture = wgpuDeviceCreateTexture(context.device, &textureDesc);
+    texture = context.createTexture2d(
+        WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst,
+        WGPUTextureFormat_RGBA8Unorm,
+        surface->w, surface->h, "The shape texture");
     assert(texture);
-    // texture view descriptor
-    WGPUTextureViewDescriptor textureViewDesc{};
-    textureViewDesc.nextInChain = nullptr;
-    textureViewDesc.label = "The shape texture view";
-    textureViewDesc.format = WGPUTextureFormat_RGBA8Unorm;
-    textureViewDesc.dimension = WGPUTextureViewDimension_2D;
-    textureViewDesc.baseMipLevel = 0;
-    textureViewDesc.mipLevelCount = 1;
-    textureViewDesc.baseArrayLayer = 0;
-    textureViewDesc.arrayLayerCount = 1;
-    textureViewDesc.aspect = WGPUTextureAspect_All;
-    textureView = wgpuTextureCreateView(texture, &textureViewDesc);
+    textureView = context.createTextureView2d(texture, "The shape texture view");
     assert(textureView);
     // update texture data
     WGPUImageCopyTexture imageCopyTexture{};
@@ -209,19 +169,8 @@ void WgImageData::update(WgContext& context, Surface* surface)
 
 void WgImageData::release(WgContext& context)
 {
-    if (textureView) {
-        wgpuTextureViewRelease(textureView);
-        textureView = nullptr;
-    }
-    if (texture) {
-        wgpuTextureDestroy(texture);
-        wgpuTextureRelease(texture);
-        texture = nullptr;
-    } 
-    if (sampler) {
-        wgpuSamplerRelease(sampler);
-        sampler = nullptr;
-    }
+    context.releaseTextureView(textureView);
+    context.releaseTexture(texture);
 };
 
 //***********************************************************************
@@ -273,6 +222,7 @@ void WgRenderDataPaint::release(WgContext& context)
 void WgRenderDataShape::updateMeshes(WgContext &context, const RenderShape &rshape)
 {
     releaseMeshes(context);
+    strokeFirst = false;
     // update shapes geometry
     WgGeometryDataGroup shapes;
     shapes.tesselate(rshape);
@@ -285,6 +235,7 @@ void WgRenderDataShape::updateMeshes(WgContext &context, const RenderShape &rsha
     meshBBoxShapes.update(context, &box);
     // update strokes geometry
     if (rshape.stroke) {
+        strokeFirst = rshape.stroke->strokeFirst;
         WgGeometryDataGroup strokes;
         strokes.stroke(rshape);
         strokes.getBBox(pmin, pmax);
@@ -301,8 +252,6 @@ void WgRenderDataShape::updateMeshes(WgContext &context, const RenderShape &rsha
 
 void WgRenderDataShape::releaseMeshes(WgContext &context)
 {
-    meshBBoxStrokes.release(context);
-    meshBBoxShapes.release(context);
     meshGroupStrokes.release(context);
     meshGroupShapes.release(context);
 }
@@ -310,11 +259,47 @@ void WgRenderDataShape::releaseMeshes(WgContext &context)
 
 void WgRenderDataShape::release(WgContext& context)
 {
+    meshBBoxStrokes.release(context);
+    meshBBoxShapes.release(context);
     releaseMeshes(context);
     renderSettingsStroke.release(context);
     renderSettingsShape.release(context);
     WgRenderDataPaint::release(context);
 };
+
+//***********************************************************************
+// WgRenderDataShapePool
+//***********************************************************************
+
+WgRenderDataShape* WgRenderDataShapePool::allocate(WgContext& context)
+{
+    WgRenderDataShape* dataShape{};
+    if (mPool.count > 0) {
+        dataShape = mPool.last();
+        mPool.pop();
+    } else {
+        dataShape = new WgRenderDataShape();
+        mList.push(dataShape);
+    }
+    return dataShape;
+}
+
+
+void WgRenderDataShapePool::free(WgContext& context, WgRenderDataShape* dataShape)
+{
+    mPool.push(dataShape);
+}
+
+
+void WgRenderDataShapePool::release(WgContext& context)
+{
+    for (uint32_t i = 0; i < mList.count; i++) {
+        mList[i]->release(context);
+        delete mList[i];
+    }
+    mPool.clear();
+    mList.clear();
+}
 
 //***********************************************************************
 // WgRenderDataPicture

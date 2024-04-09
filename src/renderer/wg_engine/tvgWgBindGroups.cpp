@@ -22,14 +22,22 @@
 
 #include "tvgWgBindGroups.h"
 
-
+// canvas information group
 WGPUBindGroupLayout WgBindGroupCanvas::layout = nullptr;
+// paint object information group
 WGPUBindGroupLayout WgBindGroupPaint::layout = nullptr;
+// fill properties information groups
 WGPUBindGroupLayout WgBindGroupSolidColor::layout = nullptr;
 WGPUBindGroupLayout WgBindGroupLinearGradient::layout = nullptr;
 WGPUBindGroupLayout WgBindGroupRadialGradient::layout = nullptr;
 WGPUBindGroupLayout WgBindGroupPicture::layout = nullptr;
-WGPUBindGroupLayout WgBindGroupCompose::layout = nullptr;
+// composition and blending properties gropus
+WGPUBindGroupLayout WgBindGroupTexture::layout = nullptr;
+WGPUBindGroupLayout WgBindGroupTextureStorage::layout = nullptr;
+WGPUBindGroupLayout WgBindGroupTextureSampled::layout = nullptr;
+WGPUBindGroupLayout WgBindGroupOpacity::layout = nullptr;
+WGPUBindGroupLayout WgBindGroupBlendMethod::layout = nullptr;
+WGPUBindGroupLayout WgBindGroupCompositeMethod::layout = nullptr;
 
 
 WGPUBindGroupLayout WgBindGroupCanvas::getLayout(WGPUDevice device)
@@ -90,15 +98,19 @@ void WgBindGroupPaint::releaseLayout()
 
 void WgBindGroupPaint::initialize(WGPUDevice device, WGPUQueue queue, WgShaderTypeMat4x4f& uModelMat, WgShaderTypeBlendSettings& uBlendSettings)
 {
-    release();
-    uBufferModelMat = createBuffer(device, queue, &uModelMat, sizeof(uModelMat));
-    uBufferBlendSettings = createBuffer(device, queue, &uBlendSettings, sizeof(uBlendSettings));
-    const WGPUBindGroupEntry bindGroupEntries[] {
-        makeBindGroupEntryBuffer(0, uBufferModelMat),
-        makeBindGroupEntryBuffer(1, uBufferBlendSettings)
-    };
-    mBindGroup = createBindGroup(device, getLayout(device), bindGroupEntries, 2);
-    assert(mBindGroup);
+    if (!uBufferModelMat && !uBufferBlendSettings && !mBindGroup) {
+        uBufferModelMat = createBuffer(device, queue, &uModelMat, sizeof(uModelMat));
+        uBufferBlendSettings = createBuffer(device, queue, &uBlendSettings, sizeof(uBlendSettings));
+        const WGPUBindGroupEntry bindGroupEntries[] {
+            makeBindGroupEntryBuffer(0, uBufferModelMat),
+            makeBindGroupEntryBuffer(1, uBufferBlendSettings)
+        };
+        mBindGroup = createBindGroup(device, getLayout(device), bindGroupEntries, 2);
+        assert(mBindGroup);
+        return;
+    }
+    wgpuQueueWriteBuffer(queue, uBufferModelMat, 0, &uModelMat, sizeof(uModelMat));
+    wgpuQueueWriteBuffer(queue, uBufferBlendSettings, 0, &uBlendSettings, sizeof(uBlendSettings));
 }
 
 
@@ -130,13 +142,16 @@ void WgBindGroupSolidColor::releaseLayout()
 
 void WgBindGroupSolidColor::initialize(WGPUDevice device, WGPUQueue queue, WgShaderTypeSolidColor &uSolidColor)
 {
-    release();
-    uBufferSolidColor = createBuffer(device, queue, &uSolidColor, sizeof(uSolidColor));
-    const WGPUBindGroupEntry bindGroupEntries[] {
-        makeBindGroupEntryBuffer(0, uBufferSolidColor)
-    };
-    mBindGroup = createBindGroup(device, getLayout(device), bindGroupEntries, 1);
-    assert(mBindGroup);
+    if (!uBufferSolidColor && !mBindGroup) {
+        uBufferSolidColor = createBuffer(device, queue, &uSolidColor, sizeof(uSolidColor));
+        const WGPUBindGroupEntry bindGroupEntries[] {
+            makeBindGroupEntryBuffer(0, uBufferSolidColor)
+        };
+        mBindGroup = createBindGroup(device, getLayout(device), bindGroupEntries, 1);
+        assert(mBindGroup);
+        return;
+    }
+    wgpuQueueWriteBuffer(queue, uBufferSolidColor, 0, &uSolidColor, sizeof(uSolidColor));
 }
 
 
@@ -167,13 +182,16 @@ void WgBindGroupLinearGradient::releaseLayout()
 
 void WgBindGroupLinearGradient::initialize(WGPUDevice device, WGPUQueue queue, WgShaderTypeLinearGradient &uLinearGradient)
 {
-    release();
-    uBufferLinearGradient = createBuffer(device, queue, &uLinearGradient, sizeof(uLinearGradient));
-    const WGPUBindGroupEntry bindGroupEntries[] {
-        makeBindGroupEntryBuffer(0, uBufferLinearGradient)
-    };
-    mBindGroup = createBindGroup(device, getLayout(device), bindGroupEntries, 1);
-    assert(mBindGroup);
+    if (!uBufferLinearGradient && !mBindGroup) {
+        uBufferLinearGradient = createBuffer(device, queue, &uLinearGradient, sizeof(uLinearGradient));
+        const WGPUBindGroupEntry bindGroupEntries[] {
+            makeBindGroupEntryBuffer(0, uBufferLinearGradient)
+        };
+        mBindGroup = createBindGroup(device, getLayout(device), bindGroupEntries, 1);
+        assert(mBindGroup);
+        return;
+    }
+    wgpuQueueWriteBuffer(queue, uBufferLinearGradient, 0, &uLinearGradient, sizeof(uLinearGradient));
 }
 
 
@@ -204,13 +222,16 @@ void WgBindGroupRadialGradient::releaseLayout()
 
 void WgBindGroupRadialGradient::initialize(WGPUDevice device, WGPUQueue queue, WgShaderTypeRadialGradient &uRadialGradient)
 {
-    release();
-    uBufferRadialGradient = createBuffer(device, queue, &uRadialGradient, sizeof(uRadialGradient));
-    const WGPUBindGroupEntry bindGroupEntries[] {
-        makeBindGroupEntryBuffer(0, uBufferRadialGradient)
-    };
-    mBindGroup = createBindGroup(device, getLayout(device), bindGroupEntries, 1);
-    assert(mBindGroup);
+    if (!uBufferRadialGradient && !mBindGroup) {
+        uBufferRadialGradient = createBuffer(device, queue, &uRadialGradient, sizeof(uRadialGradient));
+        const WGPUBindGroupEntry bindGroupEntries[] {
+            makeBindGroupEntryBuffer(0, uBufferRadialGradient)
+        };
+        mBindGroup = createBindGroup(device, getLayout(device), bindGroupEntries, 1);
+        assert(mBindGroup);
+        return;
+    }
+    wgpuQueueWriteBuffer(queue, uBufferRadialGradient, 0, &uRadialGradient, sizeof(uRadialGradient));
 }
 
 
@@ -226,7 +247,7 @@ WGPUBindGroupLayout WgBindGroupPicture::getLayout(WGPUDevice device)
     if (layout) return layout;
     const WGPUBindGroupLayoutEntry bindGroupLayoutEntries[] {
         makeBindGroupLayoutEntrySampler(0),
-        makeBindGroupLayoutEntryTextureView(1)
+        makeBindGroupLayoutEntryTexture(1)
     };
     layout = createBindGroupLayout(device, bindGroupLayoutEntries, 2);
     assert(layout);
@@ -258,40 +279,317 @@ void WgBindGroupPicture::release()
 }
 
 
-WGPUBindGroupLayout WgBindGroupCompose::getLayout(WGPUDevice device)
+WGPUBindGroupLayout WgBindGroupTexture::getLayout(WGPUDevice device)
 {
     if (layout) return layout;
     const WGPUBindGroupLayoutEntry bindGroupLayoutEntries[] {
-        makeBindGroupLayoutEntrySampler(0),
-        makeBindGroupLayoutEntryTextureView(1),
-        makeBindGroupLayoutEntryTextureView(2)
+        makeBindGroupLayoutEntryTexture(0)
     };
-    layout = createBindGroupLayout(device, bindGroupLayoutEntries, 3);
+    layout = createBindGroupLayout(device, bindGroupLayoutEntries, 1);
     assert(layout);
     return layout;
 }
 
 
-void WgBindGroupCompose::releaseLayout()
+void WgBindGroupTexture::releaseLayout()
 {
     releaseBindGroupLayout(layout);
 }
 
 
-void WgBindGroupCompose::initialize(WGPUDevice device, WGPUQueue queue, WGPUSampler uSampler, WGPUTextureView uTextureSrc, WGPUTextureView uTextureDst)
+void WgBindGroupTexture::initialize(WGPUDevice device, WGPUQueue queue, WGPUTextureView uTexture)
 {
     release();
     const WGPUBindGroupEntry bindGroupEntries[] {
-        makeBindGroupEntrySampler(0, uSampler),
-        makeBindGroupEntryTextureView(1, uTextureSrc),
-        makeBindGroupEntryTextureView(2, uTextureDst)
+        makeBindGroupEntryTextureView(0, uTexture)
     };
-    mBindGroup = createBindGroup(device, getLayout(device), bindGroupEntries, 3);
+    mBindGroup = createBindGroup(device, getLayout(device), bindGroupEntries, 1);
     assert(mBindGroup);
 }
 
 
-void WgBindGroupCompose::release()
+void WgBindGroupTexture::release()
 {
     releaseBindGroup(mBindGroup);
+}
+
+
+WGPUBindGroupLayout WgBindGroupTextureStorage::getLayout(WGPUDevice device)
+{
+    if (layout) return layout;
+    const WGPUBindGroupLayoutEntry bindGroupLayoutEntries[] {
+        makeBindGroupLayoutEntryStorageTexture(0, WGPUStorageTextureAccess_ReadWrite)
+    };
+    layout = createBindGroupLayout(device, bindGroupLayoutEntries, 1);
+    assert(layout);
+    return layout;
+}
+
+
+void WgBindGroupTextureStorage::releaseLayout()
+{
+    releaseBindGroupLayout(layout);
+}
+
+
+void WgBindGroupTextureStorage::initialize(WGPUDevice device, WGPUQueue queue, WGPUTextureView uTexture)
+{
+    release();
+    const WGPUBindGroupEntry bindGroupEntries[] {
+        makeBindGroupEntryTextureView(0, uTexture)
+    };
+    mBindGroup = createBindGroup(device, getLayout(device), bindGroupEntries, 1);
+    assert(mBindGroup);
+}
+
+
+void WgBindGroupTextureStorage::release()
+{
+    releaseBindGroup(mBindGroup);
+}
+
+
+WGPUBindGroupLayout WgBindGroupTextureSampled::getLayout(WGPUDevice device)
+{
+    if (layout) return layout;
+    const WGPUBindGroupLayoutEntry bindGroupLayoutEntries[] {
+        makeBindGroupLayoutEntrySampler(0),
+        makeBindGroupLayoutEntryTexture(1)
+    };
+    layout = createBindGroupLayout(device, bindGroupLayoutEntries, 2);
+    assert(layout);
+    return layout;
+}
+
+
+void WgBindGroupTextureSampled::releaseLayout()
+{
+    releaseBindGroupLayout(layout);
+}
+
+
+void WgBindGroupTextureSampled::initialize(WGPUDevice device, WGPUQueue queue, WGPUSampler uSampler, WGPUTextureView uTexture)
+{
+    release();
+    const WGPUBindGroupEntry bindGroupEntries[] {
+        makeBindGroupEntrySampler(0, uSampler),
+        makeBindGroupEntryTextureView(1, uTexture)
+    };
+    mBindGroup = createBindGroup(device, getLayout(device), bindGroupEntries, 2);
+    assert(mBindGroup);
+}
+
+
+void WgBindGroupTextureSampled::release()
+{
+    releaseBindGroup(mBindGroup);
+}
+
+
+WGPUBindGroupLayout WgBindGroupOpacity::getLayout(WGPUDevice device)
+{
+    if (layout) return layout;
+    const WGPUBindGroupLayoutEntry bindGroupLayoutEntries[] {
+        makeBindGroupLayoutEntryBuffer(0)
+    };
+    layout = createBindGroupLayout(device, bindGroupLayoutEntries, 1);
+    assert(layout);
+    return layout;
+}
+
+
+void WgBindGroupOpacity::releaseLayout()
+{
+    releaseBindGroupLayout(layout);
+}
+
+
+void WgBindGroupOpacity::initialize(WGPUDevice device, WGPUQueue queue, uint32_t uOpacity)
+{
+    release();
+    float opacity = uOpacity / 255.0f;
+    uBufferOpacity = createBuffer(device, queue, &opacity, sizeof(float));
+    const WGPUBindGroupEntry bindGroupEntries[] {
+        makeBindGroupEntryBuffer(0, uBufferOpacity)
+    };
+    mBindGroup = createBindGroup(device, getLayout(device), bindGroupEntries, 1);
+    assert(mBindGroup);
+}
+
+
+void WgBindGroupOpacity::release()
+{
+    releaseBuffer(uBufferOpacity);
+    releaseBindGroup(mBindGroup);
+}
+
+
+WGPUBindGroupLayout WgBindGroupBlendMethod::getLayout(WGPUDevice device)
+{
+    if (layout) return layout;
+    const WGPUBindGroupLayoutEntry bindGroupLayoutEntries[] {
+        makeBindGroupLayoutEntryBuffer(0)
+    };
+    layout = createBindGroupLayout(device, bindGroupLayoutEntries, 1);
+    assert(layout);
+    return layout;
+}
+
+
+void WgBindGroupBlendMethod::releaseLayout()
+{
+    releaseBindGroupLayout(layout);
+}
+
+
+void WgBindGroupBlendMethod::initialize(WGPUDevice device, WGPUQueue queue, BlendMethod uBlendMethod)
+{
+    release();
+    uint32_t blendMethod = (uint32_t)uBlendMethod;
+    uBufferBlendMethod = createBuffer(device, queue, &blendMethod, sizeof(blendMethod));
+    const WGPUBindGroupEntry bindGroupEntries[] {
+        makeBindGroupEntryBuffer(0, uBufferBlendMethod)
+    };
+    mBindGroup = createBindGroup(device, getLayout(device), bindGroupEntries, 1);
+    assert(mBindGroup);
+}
+
+
+void WgBindGroupBlendMethod::release()
+{
+    releaseBuffer(uBufferBlendMethod);
+    releaseBindGroup(mBindGroup);
+}
+
+
+WGPUBindGroupLayout WgBindGroupCompositeMethod::getLayout(WGPUDevice device)
+{
+    if (layout) return layout;
+    const WGPUBindGroupLayoutEntry bindGroupLayoutEntries[] {
+        makeBindGroupLayoutEntryBuffer(0)
+    };
+    layout = createBindGroupLayout(device, bindGroupLayoutEntries, 1);
+    assert(layout);
+    return layout;
+}
+
+
+void WgBindGroupCompositeMethod::releaseLayout()
+{
+    releaseBindGroupLayout(layout);
+}
+
+
+void WgBindGroupCompositeMethod::initialize(WGPUDevice device, WGPUQueue queue, CompositeMethod uCompositeMethod)
+{
+    release();
+    uint32_t compositeMethod = (uint32_t)uCompositeMethod;
+    uBufferCompositeMethod = createBuffer(device, queue, &compositeMethod, sizeof(compositeMethod));
+    const WGPUBindGroupEntry bindGroupEntries[] {
+        makeBindGroupEntryBuffer(0, uBufferCompositeMethod)
+    };
+    mBindGroup = createBindGroup(device, getLayout(device), bindGroupEntries, 1);
+    assert(mBindGroup);
+}
+
+
+void WgBindGroupCompositeMethod::release()
+{
+    releaseBuffer(uBufferCompositeMethod);
+    releaseBindGroup(mBindGroup);
+}
+
+//************************************************************************
+// bind group pools
+//************************************************************************
+
+void WgBindGroupOpacityPool::initialize(WgContext& context)
+{
+    release(context);
+    for (uint32_t opacity = 0; opacity < 256; opacity++) {
+        mPool[opacity] = new WgBindGroupOpacity;
+        mPool[opacity]->initialize(context.device, context.queue, opacity);
+    }
+}
+
+
+void WgBindGroupOpacityPool::release(WgContext& context)
+{
+    for (uint32_t i = 0; i < 256; i++) {
+        if (mPool[i]) {
+            mPool[i]->release();
+            delete mPool[i];
+            mPool[i] = nullptr;
+        }
+    }
+}
+
+
+WgBindGroupOpacity* WgBindGroupOpacityPool::allocate(WgContext& context, uint8_t opacity)
+{
+    return mPool[opacity];
+}
+
+
+void WgBindGroupBlendMethodPool::initialize(WgContext& context)
+{
+    release(context);
+    for (uint8_t blendMethod = (uint8_t)BlendMethod::Normal;
+         blendMethod <= (uint8_t)BlendMethod::SoftLight;
+         blendMethod++) {
+        mPool[blendMethod] = new WgBindGroupBlendMethod;
+        mPool[blendMethod]->initialize(context.device, context.queue, (BlendMethod)blendMethod);
+    }
+}
+
+
+void WgBindGroupBlendMethodPool::release(WgContext& context)
+{
+    for (uint8_t blendMethod = (uint8_t)BlendMethod::Normal;
+         blendMethod <= (uint8_t)BlendMethod::SoftLight;
+         blendMethod++) {
+        if (mPool[blendMethod]) {
+            mPool[blendMethod]->release();
+            delete mPool[blendMethod];
+            mPool[blendMethod] = nullptr;
+        }
+    }
+}
+
+
+WgBindGroupBlendMethod* WgBindGroupBlendMethodPool::allocate(WgContext& context, BlendMethod blendMethod)
+{
+    return mPool[(uint8_t)blendMethod];
+}
+
+
+void WgBindGroupCompositeMethodPool::initialize(WgContext& context)
+{
+    release(context);
+    for (uint8_t composeMethos = (uint8_t)CompositeMethod::None;
+         composeMethos <= (uint8_t)CompositeMethod::DifferenceMask;
+         composeMethos++) {
+        mPool[composeMethos] = new WgBindGroupCompositeMethod;
+        mPool[composeMethos]->initialize(context.device, context.queue, (CompositeMethod)composeMethos);
+    }
+}
+
+
+void WgBindGroupCompositeMethodPool::release(WgContext& context)
+{
+    for (uint8_t blendMethod = (uint8_t)CompositeMethod::None;
+         blendMethod <= (uint8_t)CompositeMethod::DifferenceMask;
+         blendMethod++) {
+        if (mPool[blendMethod]) {
+            mPool[blendMethod]->release();
+            delete mPool[blendMethod];
+            mPool[blendMethod] = nullptr;
+        }
+    }
+}
+
+
+WgBindGroupCompositeMethod* WgBindGroupCompositeMethodPool::allocate(WgContext& context, CompositeMethod composeMethod)
+{
+    return mPool[(uint8_t)composeMethod];
 }

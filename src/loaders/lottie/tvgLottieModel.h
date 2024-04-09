@@ -88,12 +88,6 @@ struct LottieMask
     LottieOpacity opacity = 255;
     CompositeMethod method;
     bool inverse = false;
-
-    bool dynamic()
-    {
-        if (opacity.frames || pathset.frames) return true;
-        return false;
-    }
 };
 
 
@@ -125,14 +119,15 @@ struct LottieObject
         free(name);
     }
 
-    virtual void override(LottieObject* prop)
+    virtual void override(LottieProperty* prop)
     {
         TVGERR("LOTTIE", "Unsupported slot type");
     }
 
+    virtual bool mergeable() { return false; }
+
     char* name = nullptr;
     Type type;
-    bool statical = true;      //no keyframes
     bool hidden = false;       //remove?
 };
 
@@ -188,9 +183,9 @@ struct LottieText : LottieObject
         LottieObject::type = LottieObject::Text;
     }
 
-    void override(LottieObject* prop) override
+    void override(LottieProperty* prop) override
     {
-        this->doc = static_cast<LottieText*>(prop)->doc;
+        this->doc = *static_cast<LottieTextDoc*>(prop);
         this->prepare();
     }
 
@@ -202,18 +197,23 @@ struct LottieText : LottieObject
 
 struct LottieTrimpath : LottieObject
 {
-    enum Type : uint8_t { Individual = 1, Simultaneous = 2 };
+    enum Type : uint8_t { Simultaneous = 1, Individual = 2 };
 
     void prepare()
     {
         LottieObject::type = LottieObject::Trimpath;
-        if (start.frames || end.frames || offset.frames) statical = false;
+    }
+
+    bool mergeable() override
+    {
+        if (!start.frames && start.value == 0.0f && !end.frames && end.value == 100.0f && !offset.frames && offset.value == 0.0f) return true;
+        return false;
     }
 
     void segment(float frameNo, float& start, float& end);
 
     LottieFloat start = 0.0f;
-    LottieFloat end = 0.0f;
+    LottieFloat end = 100.0f;
     LottieFloat offset = 0.0f;
     Type type = Simultaneous;
 };
@@ -223,6 +223,11 @@ struct LottieShape : LottieObject
 {
     virtual ~LottieShape() {}
     uint8_t direction = 0;   //0: clockwise, 2: counter-clockwise, 3: xor(?)
+
+    bool mergeable() override
+    {
+        return true;
+    }
 };
 
 
@@ -231,7 +236,6 @@ struct LottieRoundedCorner : LottieObject
     void prepare()
     {
         LottieObject::type = LottieObject::RoundedCorner;
-        if (radius.frames) statical = false;
     }
     LottieFloat radius = 0.0f;
 };
@@ -242,7 +246,6 @@ struct LottiePath : LottieShape
     void prepare()
     {
         LottieObject::type = LottieObject::Path;
-        if (pathset.frames) statical = false;
     }
 
     LottiePathSet pathset;
@@ -254,7 +257,6 @@ struct LottieRect : LottieShape
     void prepare()
     {
         LottieObject::type = LottieObject::Rect;
-        if (position.frames || size.frames || radius.frames) statical = false;
     }
 
     LottiePosition position = Point{0.0f, 0.0f};
@@ -270,7 +272,6 @@ struct LottiePolyStar : LottieShape
     void prepare()
     {
         LottieObject::type = LottieObject::Polystar;
-        if (position.frames || innerRadius.frames || outerRadius.frames || innerRoundness.frames || outerRoundness.frames || rotation.frames || ptsCnt.frames) statical = false;
     }
 
     LottiePosition position = Point{0.0f, 0.0f};
@@ -289,7 +290,6 @@ struct LottieEllipse : LottieShape
     void prepare()
     {
         LottieObject::type = LottieObject::Ellipse;
-        if (position.frames || size.frames) statical = false;
     }
 
     LottiePosition position = Point{0.0f, 0.0f};
@@ -320,9 +320,12 @@ struct LottieTransform : LottieObject
     void prepare()
     {
         LottieObject::type = LottieObject::Transform;
-        if (position.frames || rotation.frames || scale.frames || anchor.frames || opacity.frames || (coords && (coords->x.frames || coords->y.frames)) || (rotationEx && (rotationEx->x.frames || rotationEx->y.frames))) {
-            statical = false;
-        }
+    }
+
+    bool mergeable() override
+    {
+        if (!opacity.frames && opacity.value == 255) return true;
+        return false;
     }
 
     LottiePosition position = Point{0.0f, 0.0f};
@@ -348,12 +351,11 @@ struct LottieSolidStroke : LottieSolid, LottieStroke
     void prepare()
     {
         LottieObject::type = LottieObject::SolidStroke;
-        if (color.frames || opacity.frames || LottieStroke::dynamic()) statical = false;
     }
 
-    void override(LottieObject* prop) override
+    void override(LottieProperty* prop) override
     {
-        this->color = static_cast<LottieSolid*>(prop)->color;
+        this->color = *static_cast<LottieColor*>(prop);
         this->prepare();
     }
 };
@@ -364,12 +366,11 @@ struct LottieSolidFill : LottieSolid
     void prepare()
     {
         LottieObject::type = LottieObject::SolidFill;
-        if (color.frames || opacity.frames) statical = false;
     }
 
-    void override(LottieObject* prop) override
+    void override(LottieProperty* prop) override
     {
-        this->color = static_cast<LottieSolid*>(prop)->color;
+        this->color = *static_cast<LottieColor*>(prop);
         this->prepare();
     }
 
@@ -381,10 +382,14 @@ struct LottieGradient : LottieObject
 {
     uint32_t populate(ColorStop& color)
     {
+        colorStops.populated = true;
+        if (!color.input) return 0;
+
         uint32_t alphaCnt = (color.input->count - (colorStops.count * 4)) / 2;
         Array<Fill::ColorStop> output(colorStops.count + alphaCnt);
         uint32_t cidx = 0;               //color count
         uint32_t clast = colorStops.count * 4;
+        if (clast > color.input->count) clast = color.input->count;
         uint32_t aidx = clast;           //alpha count
         Fill::ColorStop cs;
 
@@ -426,7 +431,7 @@ struct LottieGradient : LottieObject
         }
 
         //color remains
-        while (cidx < clast) {
+        while (cidx + 3 < clast) {
             cs.offset = (*color.input)[cidx];
             cs.r = lroundf((*color.input)[cidx + 1] * 255.0f);
             cs.g = lroundf((*color.input)[cidx + 2] * 255.0f);
@@ -455,7 +460,6 @@ struct LottieGradient : LottieObject
         color.input->reset();
         delete(color.input);
 
-        colorStops.populated = true;
         return output.count;
     }
 
@@ -491,12 +495,12 @@ struct LottieGradientFill : LottieGradient
     void prepare()
     {
         LottieObject::type = LottieObject::GradientFill;
-        if (LottieGradient::prepare()) statical = false;
+        LottieGradient::prepare();
     }
 
-    void override(LottieObject* prop) override
+    void override(LottieProperty* prop) override
     {
-        this->colorStops = static_cast<LottieGradient*>(prop)->colorStops;
+        this->colorStops = *static_cast<LottieColorStop*>(prop);
         this->prepare();
     }
 
@@ -509,12 +513,12 @@ struct LottieGradientStroke : LottieGradient, LottieStroke
     void prepare()
     {
         LottieObject::type = LottieObject::GradientStroke;
-        if (LottieGradient::prepare() || LottieStroke::dynamic()) statical = false;
+        LottieGradient::prepare();
     }
 
-    void override(LottieObject* prop) override
+    void override(LottieProperty* prop) override
     {
-        this->colorStops = static_cast<LottieGradient*>(prop)->colorStops;
+        this->colorStops = *static_cast<LottieColorStop*>(prop);
         this->prepare();
     }
 };
@@ -545,7 +549,6 @@ struct LottieRepeater : LottieObject
     void prepare()
     {
         LottieObject::type = LottieObject::Repeater;
-        if (copies.frames || offset.frames || position.frames || rotation.frames || scale.frames || anchor.frames || startOpacity.frames || endOpacity.frames) statical = false;
     }
 
     LottieFloat copies = 0.0f;
@@ -570,12 +573,15 @@ struct LottieGroup : LottieObject
     }
 
     void prepare(LottieObject::Type type = LottieObject::Group);
+    bool mergeable() override { return allowMerge; }
 
     Scene* scene = nullptr;               //tvg render data
     Array<LottieObject*> children;
 
     bool reqFragment = false;   //requirment to fragment the render context
     bool buildDone = false;     //completed in building the composition.
+    bool allowMerge = true;     //if this group is consisted of simple (transformed) shapes.
+    bool trimpath = false;      //this group has a trimpath.
 };
 
 
@@ -591,6 +597,8 @@ struct LottieLayer : LottieGroup
         if (type == Null) return 255;
         return transform->opacity(frameNo);
     }
+
+    bool mergeable() override { return false; }
 
     void prepare();
     float remap(float frameNo);
@@ -642,28 +650,36 @@ struct LottieSlot
         //apply slot object to all targets
         for (auto pair = pairs.begin(); pair < pairs.end(); ++pair) {
             //backup the original properties before overwriting
-            if (!overriden) {
-                switch (type) {
-                    case LottieProperty::Type::ColorStop: {
+            switch (type) {
+                case LottieProperty::Type::ColorStop: {
+                    if (!overriden) {
                         pair->prop = new LottieColorStop;
                         *static_cast<LottieColorStop*>(pair->prop) = static_cast<LottieGradient*>(pair->obj)->colorStops;
-                        break;
                     }
-                    case LottieProperty::Type::Color: {
+
+                    pair->obj->override(&static_cast<LottieGradient*>(target)->colorStops);
+                    break;
+                }
+                case LottieProperty::Type::Color: {
+                    if (!overriden) {
                         pair->prop = new LottieColor;
                         *static_cast<LottieColor*>(pair->prop) = static_cast<LottieSolid*>(pair->obj)->color;
-                        break;
                     }
-                    case LottieProperty::Type::TextDoc: {
+
+                    pair->obj->override(&static_cast<LottieSolid*>(target)->color);
+                    break;
+                }
+                case LottieProperty::Type::TextDoc: {
+                    if (!overriden) {
                         pair->prop = new LottieTextDoc;
                         *static_cast<LottieTextDoc*>(pair->prop) = static_cast<LottieText*>(pair->obj)->doc;
-                        break;
                     }
-                    default: break;
+
+                    pair->obj->override(&static_cast<LottieText*>(target)->doc);
+                    break;
                 }
+                default: break;
             }
-            //FIXME: it overrides the object's whole properties, but it acutally needs a single property of it.
-            pair->obj->override(target);
         }
         overriden = true;
     }

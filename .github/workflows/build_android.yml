@@ -12,7 +12,7 @@ jobs:
   build_x86_64:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: nttld/setup-ndk@v1.3.1
       id: setup-ndk
       with:
@@ -30,19 +30,19 @@ jobs:
         NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
         API: 21
       run: |
-        sed -e "s|NDK|$NDK|g" -e "s|API|$API|g" ./cross/android_x86_64.txt > /tmp/android_cross.txt
+        sed -e "s|NDK|$NDK|g" -e "s|HOST_TAG|linux-x86_64|g" -e "s|API|$API|g" ./cross/android_x86_64.txt > /tmp/android_cross.txt
         meson setup build -Dlog=true -Dloaders="all" -Dsavers="all" -Dbindings="capi" --cross-file /tmp/android_cross.txt
         sudo ninja -C build install
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
-        name: result
+        name: result_x86_64
         path: build/src/libthorvg*
 
   build_aarch64:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: nttld/setup-ndk@v1.3.1
       id: setup-ndk
       with:
@@ -60,11 +60,11 @@ jobs:
         NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
         API: 21
       run: |
-        sed -e "s|NDK|$NDK|g" -e "s|API|$API|g" ./cross/android_aarch64.txt > /tmp/android_cross.txt
+        sed -e "s|NDK|$NDK|g" -e "s|HOST_TAG|linux-x86_64|g" -e "s|API|$API|g" ./cross/android_aarch64.txt > /tmp/android_cross.txt
         meson setup build -Dlog=true -Dloaders="all" -Dsavers="all" -Dbindings="capi" --cross-file /tmp/android_cross.txt
         sudo ninja -C build install
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
-        name: result
+        name: result_aarch64
         path: build/src/libthorvg*

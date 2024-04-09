@@ -30,14 +30,6 @@
 /* Internal Class Implementation                                        */
 /************************************************************************/
 
-static bool _checkDotLottie(const char *str)
-{
-    //check the .Lottie signature.
-    if (str[0] == 0x50 && str[1] == 0x4B && str[2] == 0x03 && str[3] == 0x04) return true;
-    else return false;
-}
-
-
 static float _str2float(const char* str, int len)
 {
     auto tmp = strDuplicate(str, len);
@@ -197,13 +189,6 @@ bool LottieLoader::header()
 
 bool LottieLoader::open(const char* data, uint32_t size, bool copy)
 {
-    //If the format is dotLottie
-    auto dotLottie = _checkDotLottie(data);
-    if (dotLottie) {
-        TVGLOG("LOTTIE", "Requested .Lottie Format, Not Supported yet.");
-        return false;
-    }
-
     if (copy) {
         content = (char*)malloc(size);
         if (!content) return false;
@@ -216,7 +201,6 @@ bool LottieLoader::open(const char* data, uint32_t size, bool copy)
     return header();
 }
 
-#define FLUX_TVG_LOTTIE_PATCHED
 
 bool LottieLoader::open(const string& path)
 {
@@ -235,26 +219,12 @@ bool LottieLoader::open(const string& path)
     fseek(f, 0, SEEK_SET);
     auto ret = fread(content, sizeof(char), size, f);
     if (ret < size) {
-
-        //hack for  windows !!! don't know why but sometimes size is not correct
-        // e.g. size == 33113, ret == 31708
-        if (ret < size - (size / 16))
-        {
-            fclose(f);
-            return false;
-        }
-        size = ret;
+        fclose(f);
+        return false;
     }
     content[size] = '\0';
 
     fclose(f);
-
-    //If the format is dotLottie
-    auto dotLottie = _checkDotLottie(content);
-    if (dotLottie) {
-        TVGLOG("LOTTIE", "Requested .Lottie Format, Not Supported yet.");
-        return false;
-    }
 
     this->dirName = strDirname(path.c_str());
     this->content = content;
@@ -312,7 +282,7 @@ bool LottieLoader::override(const char* slot)
 
     //override slots
     if (slot) {
-        //TODO: Crashed, does this necessary?
+        //Copy the input data because the JSON parser will encode the data immediately.
         auto temp = strdup(slot);
 
         //parsing slot json

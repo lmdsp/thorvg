@@ -59,15 +59,28 @@ public:
     static WgRenderer* gen();
     static bool init(uint32_t threads);
     static bool term();
-
 private:
-    Array<RenderData> mRenderDatas{};
+    // render handles
+    WGPUCommandEncoder mCommandEncoder{};
+    WgRenderStorage mRenderTarget;
+    WgRenderStorage mRenderStorageRoot;
+    WgRenderStorage mRenderStorageScreen;
+    WgRenderStoragePool mRenderStoragePool;
+    WgBindGroupOpacityPool mOpacityPool;
+    WgBindGroupBlendMethodPool mBlendMethodPool;
+    WgBindGroupCompositeMethodPool mCompositeMethodPool;
+    WgRenderDataShapePool mRenderDataShapePool;
+
+    // render tree stacks
+    Array<Compositor*> mCompositorStack;
+    Array<WgRenderStorage*> mRenderStorageStack;
+
+    // native window handles
+    WGPUSurface mSurface{};
     WgContext mContext;
     WgPipelines mPipelines;
-    WgRenderTarget mRenderTarget;
-    WGPUSurface mSurface{};
-    WGPUSwapChain mSwapChain{};
     Surface mTargetSurface;
+    BlendMethod mBlendMethod{};
 };
 
 #endif /* _TVG_WG_RENDERER_H_ */

@@ -26,33 +26,28 @@
 #define TVG_COMPOSE_SHADER(shader) #shader
 
 const char* COLOR_VERT_SHADER = TVG_COMPOSE_SHADER(
-    layout(location = 0) in vec3 aLocation;                         \n
+    layout(location = 0) in vec2 aLocation;                         \n
     layout(std140) uniform Matrix {                                 \n
         mat4 transform;                                             \n
     } uMatrix;                                                      \n
-    out float vOpacity;                                             \n
     void main()                                                     \n
     {                                                               \n
-        gl_Position =                                               \n
-            uMatrix.transform * vec4(aLocation.xy, 0.0, 1.0);       \n
-        vOpacity = aLocation.z;                                     \n
+        gl_Position = uMatrix.transform * vec4(aLocation, 0.0, 1.0);\n
     });
 
 const char* COLOR_FRAG_SHADER = TVG_COMPOSE_SHADER(
     layout(std140) uniform ColorInfo {                       \n
         vec4 solidColor;                                     \n
     } uColorInfo;                                            \n
-    in float vOpacity;                                       \n
     out vec4 FragColor;                                      \n
     void main()                                              \n
     {                                                        \n
        vec4 uColor = uColorInfo.solidColor;                  \n
-       FragColor = vec4(uColor.xyz, uColor.w*vOpacity);      \n
+       FragColor =  vec4(uColor.rgb * uColor.a, uColor.a);   \n
     });
 
 const char* GRADIENT_VERT_SHADER = TVG_COMPOSE_SHADER(
-layout(location = 0) in vec3 aLocation;                                         \n
-out float vOpacity;                                                             \n
+layout(location = 0) in vec2 aLocation;                                         \n
 out vec2 vPos;                                                                  \n
 layout(std140) uniform Matrix {                                                 \n
     mat4 transform;                                                             \n
@@ -60,16 +55,14 @@ layout(std140) uniform Matrix {                                                 
                                                                                 \n
 void main()                                                                     \n
 {                                                                               \n
-    gl_Position = uMatrix.transform * vec4(aLocation.xy, 0.0, 1.0);             \n
-    vOpacity = aLocation.z;                                                     \n
-    vPos =  aLocation.xy;                                                       \n
+    gl_Position = uMatrix.transform * vec4(aLocation, 0.0, 1.0);                \n
+    vPos =  aLocation;                                                          \n
 });
 
 
 std::string STR_GRADIENT_FRAG_COMMON_VARIABLES = TVG_COMPOSE_SHADER(
 const int MAX_STOP_COUNT = 16;                                                                          \n
 in vec2 vPos;                                                                                           \n
-in float vOpacity;                                                                                      \n
 );
 
 std::string STR_GRADIENT_FRAG_COMMON_FUNCTIONS = TVG_COMPOSE_SHADER(
@@ -90,10 +83,20 @@ float gradientStop(int index)                                                   
                                                                                                         \n
 float gradientWrap(float d)                                                                             \n
 {                                                                                                       \n
+    int spread = int(uGradientInfo.nStops[2]);                                                          \n
+                                                                                                        \n
+    if (spread == 0) { /* pad */                                                                        \n
+        return clamp(d, 0.0, 1.0);                                                                      \n
+    }                                                                                                   \n
+                                                                                                        \n
     int i = 1;                                                                                          \n
     while (d > 1.0) {                                                                                   \n
         d = d - 1.0;                                                                                    \n
         i *= -1;                                                                                        \n
+    }                                                                                                   \n
+                                                                                                        \n
+    if (spread == 2) {  /* Reflect */                                                                   \n
+        return smoothstep(0.0, 1.0, d);                                                                 \n
     }                                                                                                   \n
                                                                                                         \n
     if (i == 1)                                                                                         \n
@@ -145,7 +148,7 @@ layout(std140) uniform GradientInfo {                                           
     vec4  nStops;                                                                                       \n
     vec2  gradStartPos;                                                                                 \n
     vec2  gradEndPos;                                                                                   \n
-    vec4  stopPoints[MAX_STOP_COUNT / 4];                                                                                   \n
+    vec4  stopPoints[MAX_STOP_COUNT / 4];                                                               \n
     vec4  stopColors[MAX_STOP_COUNT];                                                                   \n
 } uGradientInfo ;                                                                                       \n
 );
@@ -168,7 +171,7 @@ void main()                                                                     
                                                                                                         \n
     vec3 noise = 8.0 * uGradientInfo.nStops[1] * ScreenSpaceDither(pos);                                \n
     vec4 finalCol = vec4(color.xyz + noise, color.w);                                                   \n
-    FragColor = vec4(finalCol.xyz, finalCol.w* vOpacity);                                               \n
+    FragColor =  vec4(finalCol.rgb * finalCol.a, finalCol.a);                                           \n
 });
 
 std::string STR_RADIAL_GRADIENT_VARIABLES = TVG_COMPOSE_SHADER(
@@ -197,7 +200,7 @@ void main()                                                                     
                                                                                                         \n
     vec3 noise = 8.0 * uGradientInfo.nStops[1] * ScreenSpaceDither(pos);                                \n
     vec4 finalCol = vec4(color.xyz + noise, color.w);                                                   \n
-    FragColor = vec4(finalCol.xyz, finalCol.w * vOpacity);                                              \n
+    FragColor =  vec4(finalCol.rgb * finalCol.a, finalCol.a);                                           \n
 });
 
 std::string STR_LINEAR_GRADIENT_FRAG_SHADER =
@@ -218,19 +221,17 @@ const char* RADIAL_GRADIENT_FRAG_SHADER = STR_RADIAL_GRADIENT_FRAG_SHADER.c_str(
 
 
 const char* IMAGE_VERT_SHADER = TVG_COMPOSE_SHADER(
-    layout (location = 0) in vec3 aLocation;                                                \n
+    layout (location = 0) in vec2 aLocation;                                                \n
     layout (location = 1) in vec2 aUV;                                                      \n
     layout (std140) uniform Matrix {                                                        \n
         mat4 transform;                                                                     \n
     } uMatrix;                                                                              \n
                                                                                             \n
-    out float aOpacity;                                                                     \n
     out vec2 vUV;                                                                           \n
                                                                                             \n
     void main() {                                                                           \n
-        aOpacity = aLocation.z;                                                             \n
         vUV = aUV;                                                                          \n
-        gl_Position = uMatrix.transform * vec4(aLocation.xy, 0.0, 1.0);                     \n
+        gl_Position = uMatrix.transform * vec4(aLocation, 0.0, 1.0);                        \n
     }                                                                                       \n
 );
 
@@ -243,7 +244,6 @@ const char* IMAGE_FRAG_SHADER = TVG_COMPOSE_SHADER(
     } uColorInfo;                                                                           \n
     uniform sampler2D uTexture;                                                             \n
                                                                                             \n
-    in float aOpacity;                                                                      \n
     in vec2 vUV;                                                                            \n
                                                                                             \n
     out vec4 FragColor;                                                                     \n
@@ -255,35 +255,33 @@ const char* IMAGE_FRAG_SHADER = TVG_COMPOSE_SHADER(
         vec4 color = texture(uTexture, uv);                                                 \n
         vec4 result = color;                                                                \n
         if (uColorInfo.format == 1) { /* FMT_ARGB8888 */                                    \n
-            result.r = color.b;                                                             \n
-            result.g = color.g;                                                             \n
-            result.b = color.r;                                                             \n
-            result.a = color.a;                                                             \n
-        } else if (uColorInfo.format == 2) { /* FMT_ABGR8888S */                            \n
-            result = vec4(color.rgb * color.a, color.a);                                    \n
-        } else if (uColorInfo.format == 3) { /* FMT_ARGB8888S */                            \n
             result.r = color.b * color.a;                                                   \n
             result.g = color.g * color.a;                                                   \n
-            result.b = color.b * color.a;                                                   \n
+            result.b = color.r * color.a;                                                   \n
+            result.a = color.a;                                                             \n
+        } else if (uColorInfo.format == 2) { /* FMT_ABGR8888S */                            \n
+            result = color;                                                                 \n
+        } else if (uColorInfo.format == 3) { /* FMT_ARGB8888S */                            \n
+            result.r = color.b;                                                             \n
+            result.g = color.g;                                                             \n
+            result.b = color.b;                                                             \n
             result.a = color.a;                                                             \n
         }                                                                                   \n
         float opacity = float(uColorInfo.opacity) / 255.0;                                  \n
-        FragColor = vec4(result.rgb, result.a * opacity * aOpacity);                        \n
+        FragColor = result * opacity;                                                       \n
    }                                                                                        \n
 );
 
 const char* MASK_VERT_SHADER = TVG_COMPOSE_SHADER(
-layout(location = 0) in vec3 aLocation;                 \n
+layout(location = 0) in vec2 aLocation;                 \n
 layout(location = 1) in vec2 aUV;                       \n
                                                         \n
-out float vOpacity;                                     \n
 out vec2  vUV;                                          \n
                                                         \n
 void main() {                                           \n
   vUV = aUV;                                            \n
-  vOpacity = aLocation.z;                               \n
                                                         \n
-  gl_Position = vec4(aLocation.xy, 0.0, 1.0);           \n
+  gl_Position = vec4(aLocation, 0.0, 1.0);              \n
 }                                                       \n
 );
 
@@ -292,7 +290,6 @@ const char* MASK_ALPHA_FRAG_SHADER = TVG_COMPOSE_SHADER(
 uniform sampler2D uSrcTexture;                          \n
 uniform sampler2D uMaskTexture;                         \n
                                                         \n
-in float vOpacity;                                      \n
 in vec2 vUV;                                            \n
                                                         \n
 out vec4 FragColor;                                     \n
@@ -301,8 +298,7 @@ void main() {                                           \n
     vec4 srcColor = texture(uSrcTexture, vUV);          \n
     vec4 maskColor = texture(uMaskTexture, vUV);        \n
                                                         \n
-    FragColor = vec4(srcColor.rgb,                      \n
-             srcColor.a * maskColor.a * vOpacity);      \n
+    FragColor = srcColor * maskColor.a;                 \n
 }                                                       \n
 );
 
@@ -310,7 +306,6 @@ const char* MASK_INV_ALPHA_FRAG_SHADER = TVG_COMPOSE_SHADER(
 uniform sampler2D uSrcTexture;                              \n
 uniform sampler2D uMaskTexture;                             \n
                                                             \n
-in float vOpacity;                                          \n
 in vec2 vUV;                                                \n
                                                             \n
 out vec4 FragColor;                                         \n
@@ -319,8 +314,7 @@ void main() {                                               \n
     vec4 srcColor = texture(uSrcTexture, vUV);              \n
     vec4 maskColor = texture(uMaskTexture, vUV);            \n
                                                             \n
-    FragColor = vec4(srcColor.rgb,                          \n
-             srcColor.a * (1.0 - maskColor.a) * vOpacity);  \n
+    FragColor = srcColor *(1.0 - maskColor.a);              \n
 }                                                           \n
 );
 
@@ -328,7 +322,6 @@ const char* MASK_LUMA_FRAG_SHADER = TVG_COMPOSE_SHADER(
 uniform sampler2D uSrcTexture;                                                                          \n
 uniform sampler2D uMaskTexture;                                                                         \n
                                                                                                         \n
-in float vOpacity;                                                                                      \n
 in vec2 vUV;                                                                                            \n
                                                                                                         \n
 out vec4 FragColor;                                                                                     \n
@@ -337,7 +330,12 @@ void main() {                                                                   
     vec4 srcColor = texture(uSrcTexture, vUV);                                                          \n
     vec4 maskColor = texture(uMaskTexture, vUV);                                                        \n
                                                                                                         \n
-    FragColor = srcColor * vOpacity * (0.299 * maskColor.r + 0.587 * maskColor.g + 0.114 * maskColor.b);   \n
+    if (maskColor.a > 0.000001) {                                                                       \n
+        maskColor = vec4(maskColor.rgb / maskColor.a, maskColor.a);                                     \n
+    }                                                                                                   \n
+                                                                                                        \n
+    FragColor =                                                                                         \n
+        srcColor * (0.299 * maskColor.r + 0.587 * maskColor.g + 0.114 * maskColor.b) * maskColor.a;     \n
 }                                                                                                       \n
 );
 
@@ -345,7 +343,6 @@ const char* MASK_INV_LUMA_FRAG_SHADER = TVG_COMPOSE_SHADER(
 uniform sampler2D uSrcTexture;                                                      \n
 uniform sampler2D uMaskTexture;                                                     \n
                                                                                     \n
-in float vOpacity;                                                                  \n
 in vec2 vUV;                                                                        \n
                                                                                     \n
 out vec4 FragColor;                                                                 \n
@@ -355,7 +352,8 @@ void main() {                                                                   
     vec4 maskColor = texture(uMaskTexture, vUV);                                    \n
                                                                                     \n
     float luma = (0.299 * maskColor.r + 0.587 * maskColor.g + 0.114 * maskColor.b); \n
-    FragColor = srcColor * vOpacity * (1.0 - luma);                                 \n
+    luma *= maskColor.a;                                                            \n
+    FragColor = srcColor * (1.0 - luma);                                            \n
 }                                                                                   \n
 );
 
@@ -363,7 +361,6 @@ const char* MASK_ADD_FRAG_SHADER = TVG_COMPOSE_SHADER(
 uniform sampler2D uSrcTexture;                                      \n
 uniform sampler2D uMaskTexture;                                     \n
                                                                     \n
-in float vOpacity;                                                  \n
 in vec2 vUV;                                                        \n
                                                                     \n
 out vec4 FragColor;                                                 \n
@@ -374,7 +371,7 @@ void main() {                                                       \n
                                                                     \n
     vec4 color = srcColor + maskColor * (1.0 - srcColor.a);         \n
                                                                     \n
-    FragColor = min(color, vec4(1.0, 1.0, 1.0, 1.0 * vOpacity)) ;   \n
+    FragColor = min(color, vec4(1.0, 1.0, 1.0, 1.0)) ;              \n
 }                                                                   \n
 );
 
@@ -382,7 +379,6 @@ const char* MASK_SUB_FRAG_SHADER = TVG_COMPOSE_SHADER(
 uniform sampler2D uSrcTexture;                                          \n
 uniform sampler2D uMaskTexture;                                         \n
                                                                         \n
-in float vOpacity;                                                      \n
 in vec2 vUV;                                                            \n
                                                                         \n
 out vec4 FragColor;                                                     \n
@@ -392,10 +388,11 @@ void main() {                                                           \n
     vec4 maskColor = texture(uMaskTexture, vUV);                        \n
     float a = srcColor.a - maskColor.a;                                 \n
                                                                         \n
-    if (a <= 0.0) {                                                     \n
+    if (a < 0.0 || srcColor.a == 0.0) {                                 \n
         FragColor = vec4(0.0, 0.0, 0.0, 0.0);                           \n
     } else {                                                            \n
-        FragColor = vec4(srcColor.rgb, srcColor.a * vOpacity * a);      \n
+        vec3 srcRgb = srcColor.rgb / srcColor.a;                        \n
+        FragColor = vec4(srcRgb * a, a);                                \n
     }                                                                   \n
 }                                                                       \n
 );
@@ -404,7 +401,6 @@ const char* MASK_INTERSECT_FRAG_SHADER = TVG_COMPOSE_SHADER(
 uniform sampler2D uSrcTexture;                                          \n
 uniform sampler2D uMaskTexture;                                         \n
                                                                         \n
-in float vOpacity;                                                      \n
 in vec2 vUV;                                                            \n
                                                                         \n
 out vec4 FragColor;                                                     \n
@@ -413,9 +409,8 @@ void main() {                                                           \n
     vec4 srcColor = texture(uSrcTexture, vUV);                          \n
     vec4 maskColor = texture(uMaskTexture, vUV);                        \n
                                                                         \n
-    float intAlpha = srcColor.a * maskColor.a;                          \n
                                                                         \n
-    FragColor = vec4(maskColor.rgb, maskColor.a * vOpacity * intAlpha); \n
+    FragColor = maskColor * srcColor.a;                                 \n
 }                                                                       \n
 );
 
@@ -423,7 +418,6 @@ const char* MASK_DIFF_FRAG_SHADER = TVG_COMPOSE_SHADER(
 uniform sampler2D uSrcTexture;                                          \n
 uniform sampler2D uMaskTexture;                                         \n
                                                                         \n
-in float vOpacity;                                                      \n
 in vec2 vUV;                                                            \n
                                                                         \n
 out vec4 FragColor;                                                     \n
@@ -437,9 +431,25 @@ void main() {                                                           \n
     if (da == 0.0) {                                                    \n
         FragColor = vec4(0.0, 0.0, 0.0, 0.0);                           \n
     } else if (da > 0.0) {                                              \n
-        FragColor = vec4(srcColor.rgb, srcColor.a * da * vOpacity);     \n
+        FragColor = srcColor * da;                                      \n
     } else {                                                            \n
-        FragColor = vec4(maskColor.rgb, maskColor.a * (-da) * vOpacity);\n
+        FragColor = maskColor * (-da);                                  \n
     }                                                                   \n
 }                                                                       \n
+);
+
+const char* STENCIL_VERT_SHADER = TVG_COMPOSE_SHADER(
+    layout(location = 0) in vec2 aLocation;                         \n
+    layout(std140) uniform Matrix {                                 \n
+        mat4 transform;                                             \n
+    } uMatrix;                                                      \n
+    void main()                                                     \n
+    {                                                               \n
+        gl_Position =                                               \n
+            uMatrix.transform * vec4(aLocation, 0.0, 1.0);          \n
+    });
+
+const char* STENCIL_FRAG_SHADER = TVG_COMPOSE_SHADER(
+    out vec4 FragColor;                                             \n
+    void main() { FragColor = vec4(0.0); }                          \n
 );

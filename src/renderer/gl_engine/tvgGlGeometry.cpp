@@ -20,16 +20,10 @@
  * SOFTWARE.
  */
 
-#include <float.h>
 #include "tvgGlGpuBuffer.h"
 #include "tvgGlGeometry.h"
 #include "tvgGlTessellator.h"
 #include "tvgGlRenderTask.h"
-
-#define NORMALIZED_TOP_3D 1.0f
-#define NORMALIZED_BOTTOM_3D -1.0f
-#define NORMALIZED_LEFT_3D -1.0f
-#define NORMALIZED_RIGHT_3D 1.0f
 
 GlGeometry::~GlGeometry()
 {
@@ -41,8 +35,12 @@ bool GlGeometry::tesselate(const RenderShape& rshape, RenderUpdateFlag flag)
         fillVertex.clear();
         fillIndex.clear();
 
-        Tessellator tess{&fillVertex, &fillIndex};
-        tess.tessellate(&rshape, true);
+
+        BWTessellator bwTess{&fillVertex, &fillIndex};
+
+        bwTess.tessellate(&rshape);
+
+        mFillRule = rshape.rule;
     }
 
     if (flag & (RenderUpdateFlag::Stroke | RenderUpdateFlag::Transform)) {
@@ -70,19 +68,19 @@ bool GlGeometry::tesselate(const Surface* image, const RenderMesh* mesh, RenderU
             for (uint32_t i = 0; i < mesh->triangleCnt; i++) {
                 fillVertex.push(mesh->triangles[i].vertex[0].pt.x);
                 fillVertex.push(mesh->triangles[i].vertex[0].pt.y);
-                fillVertex.push(1.f);
+
                 fillVertex.push(mesh->triangles[i].vertex[0].uv.x);
                 fillVertex.push(mesh->triangles[i].vertex[0].uv.y);
 
                 fillVertex.push(mesh->triangles[i].vertex[1].pt.x);
                 fillVertex.push(mesh->triangles[i].vertex[1].pt.y);
-                fillVertex.push(1.f);
+
                 fillVertex.push(mesh->triangles[i].vertex[1].uv.x);
                 fillVertex.push(mesh->triangles[i].vertex[1].uv.y);
 
                 fillVertex.push(mesh->triangles[i].vertex[2].pt.x);
                 fillVertex.push(mesh->triangles[i].vertex[2].pt.y);
-                fillVertex.push(1.f);
+
                 fillVertex.push(mesh->triangles[i].vertex[2].uv.x);
                 fillVertex.push(mesh->triangles[i].vertex[2].uv.y);
 
@@ -104,25 +102,25 @@ bool GlGeometry::tesselate(const Surface* image, const RenderMesh* mesh, RenderU
             // left top point
             fillVertex.push(left);
             fillVertex.push(top);
-            fillVertex.push(1.f);
+
             fillVertex.push(0.f);
             fillVertex.push(1.f);
             // left bottom point
             fillVertex.push(left);
             fillVertex.push(bottom);
-            fillVertex.push(1.f);
+
             fillVertex.push(0.f);
             fillVertex.push(0.f);
             // right top point
             fillVertex.push(right);
             fillVertex.push(top);
-            fillVertex.push(1.f);
+
             fillVertex.push(1.f);
             fillVertex.push(1.f);
             // right bottom point
             fillVertex.push(right);
             fillVertex.push(bottom);
-            fillVertex.push(1.f);
+
             fillVertex.push(1.f);
             fillVertex.push(0.f);
 
@@ -156,7 +154,7 @@ bool GlGeometry::draw(GlRenderTask* task, GlStageBuffer* gpuBuffer, RenderUpdate
     Array<float>* vertexBuffer = nullptr;
     Array<uint32_t>* indexBuffer = nullptr;
 
-    if (flag & RenderUpdateFlag::Stroke) {
+    if ((flag & RenderUpdateFlag::Stroke) || (flag & RenderUpdateFlag::GradientStroke)) {
         vertexBuffer = &strokeVertex;
         indexBuffer = &strokeIndex;
     } else {
@@ -172,10 +170,10 @@ bool GlGeometry::draw(GlRenderTask* task, GlStageBuffer* gpuBuffer, RenderUpdate
     // vertex layout
     if (flag & RenderUpdateFlag::Image) {
         // image has two attribute: [pos, uv]
-        task->addVertexLayout(GlVertexLayout{0, 3, 5 * sizeof(float), vertexOffset});
-        task->addVertexLayout(GlVertexLayout{1, 2, 5 * sizeof(float), vertexOffset + 3 * sizeof(float)});
+        task->addVertexLayout(GlVertexLayout{0, 2, 4 * sizeof(float), vertexOffset});
+        task->addVertexLayout(GlVertexLayout{1, 2, 4 * sizeof(float), vertexOffset + 2 * sizeof(float)});
     } else {
-        task->addVertexLayout(GlVertexLayout{0, 3, 3 * sizeof(float), vertexOffset});
+        task->addVertexLayout(GlVertexLayout{0, 2, 2 * sizeof(float), vertexOffset});
     }
     task->setDrawRange(indexOffset, indexBuffer->count);
     task->setViewport(viewport);
@@ -208,4 +206,16 @@ void GlGeometry::setViewport(const RenderRegion& viewport)
 float* GlGeometry::getTransforMatrix()
 {
     return mTransform;
+}
+
+GlStencilMode GlGeometry::getStencilMode(RenderUpdateFlag flag)
+{
+    if (flag & RenderUpdateFlag::Stroke) return GlStencilMode::Stroke;
+    if (flag & RenderUpdateFlag::GradientStroke) return GlStencilMode::Stroke;
+    if (flag & RenderUpdateFlag::Image) return GlStencilMode::None;
+
+    if (mFillRule == FillRule::Winding) return GlStencilMode::FillWinding;
+    if (mFillRule == FillRule::EvenOdd) return GlStencilMode::FillEvenOdd;
+
+    return GlStencilMode::None;
 }

@@ -22,10 +22,19 @@
 
 #include "tvgGlRenderTask.h"
 #include "tvgGlProgram.h"
+#include "tvgGlRenderPass.h"
 
 /************************************************************************/
 /* External Class Implementation                                        */
 /************************************************************************/
+
+GlRenderTask::GlRenderTask(GlProgram* program, GlRenderTask* other): mProgram(program)
+{
+    mVertexLayout.push(other->mVertexLayout);
+    mViewport = other->mViewport;
+    mIndexOffset = other->mIndexOffset;
+    mIndexCount = other->mIndexCount;
+}
 
 void GlRenderTask::run()
 {
@@ -90,8 +99,61 @@ void GlRenderTask::setViewport(const RenderRegion &viewport)
     mViewport = viewport;
 }
 
-GlComposeTask::GlComposeTask(GlProgram* program, GLuint target, GLuint selfFbo, Array<GlRenderTask*>&& tasks)
- :GlRenderTask(program) ,mTargetFbo(target), mSelfFbo(selfFbo), mTasks()
+GlStencilCoverTask::GlStencilCoverTask(GlRenderTask* stencil, GlRenderTask* cover, GlStencilMode mode)
+ :GlRenderTask(nullptr), mStencilTask(stencil), mCoverTask(cover), mStencilMode(mode) {}
+
+GlStencilCoverTask::~GlStencilCoverTask()
+{
+    delete mStencilTask;
+    delete mCoverTask;
+}
+
+void GlStencilCoverTask::run()
+{
+    GL_CHECK(glEnable(GL_STENCIL_TEST));
+
+    if (mStencilMode == GlStencilMode::Stroke) {
+        GL_CHECK(glStencilFunc(GL_NOTEQUAL, 0x1, 0xFF));
+        GL_CHECK(glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE));
+    } else {
+        GL_CHECK(glStencilFuncSeparate(GL_FRONT, GL_ALWAYS, 0x1, 0xFF));
+        GL_CHECK(glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_KEEP, GL_INCR_WRAP));
+
+        GL_CHECK(glStencilFuncSeparate(GL_BACK, GL_ALWAYS, 0x1, 0xFF));
+        GL_CHECK(glStencilOpSeparate(GL_BACK, GL_KEEP, GL_KEEP, GL_DECR_WRAP));
+    }
+    GL_CHECK(glColorMask(0, 0, 0, 0));
+
+    mStencilTask->run();
+
+    if (mStencilMode == GlStencilMode::FillEvenOdd) {
+        GL_CHECK(glStencilFunc(GL_EQUAL, 0x01, 0x01));
+        GL_CHECK(glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE));
+    } else {
+        GL_CHECK(glStencilFunc(GL_NOTEQUAL, 0x0, 0xFF));
+        GL_CHECK(glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE));
+    }
+
+    GL_CHECK(glColorMask(1, 1, 1, 1));
+
+    mCoverTask->run();
+
+    if (mStencilMode == GlStencilMode::FillEvenOdd) {
+        GL_CHECK(glStencilFunc(GL_NOTEQUAL, 0x0, 0xFF));
+        GL_CHECK(glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE));
+
+        GL_CHECK(glColorMask(0, 0, 0, 0));
+
+        mStencilTask->run();
+
+        GL_CHECK(glColorMask(1, 1, 1, 1));
+    }
+
+    GL_CHECK(glDisable(GL_STENCIL_TEST));
+}
+
+GlComposeTask::GlComposeTask(GlProgram* program, GLuint target, GlRenderTarget* fbo, Array<GlRenderTask*>&& tasks)
+ :GlRenderTask(program) ,mTargetFbo(target), mFbo(fbo), mTasks()
 {
     mTasks.push(tasks);
     tasks.clear();
@@ -111,19 +173,33 @@ void GlComposeTask::run()
     GL_CHECK(glBindFramebuffer(GL_FRAMEBUFFER, getSelfFbo()));
 
     // clear this fbo
-    GLenum color_buffer = GL_COLOR_ATTACHMENT0;
-    const float transparent[] = {0.f, 0.f, 0.f, 0.f};
-
-    GL_CHECK(glDrawBuffers(1, &color_buffer));
-    GL_CHECK(glClearBufferfv(GL_COLOR, 0, transparent));
+    GL_CHECK(glClearColor(0, 0, 0, 0));
+    GL_CHECK(glClearStencil(0));
+    GL_CHECK(glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
 
     for(uint32_t i = 0; i < mTasks.count; i++) {
         mTasks[i]->run();
     }
+
+    GLenum stencil_attachment = GL_STENCIL_ATTACHMENT;
+    GL_CHECK(glInvalidateFramebuffer(GL_FRAMEBUFFER, 1, &stencil_attachment));
+
+    onResolve();
 }
 
-GlBlitTask::GlBlitTask(GlProgram* program, GLuint target, GLuint compose, Array<GlRenderTask*>&& tasks)
- : GlComposeTask(program, target, compose, std::move(tasks))
+GLuint GlComposeTask::getSelfFbo() { return mFbo->getFboId(); }
+
+GLuint GlComposeTask::getResolveFboId() { return mFbo->getResolveFboId(); }
+
+void GlComposeTask::onResolve() {
+    GL_CHECK(glBindFramebuffer(GL_READ_FRAMEBUFFER, getSelfFbo()));
+    GL_CHECK(glBindFramebuffer(GL_DRAW_FRAMEBUFFER, getResolveFboId()));
+
+    GL_CHECK(glBlitFramebuffer(0, 0, mFbo->getWidth(), mFbo->getHeight(), 0, 0, mFbo->getWidth(), mFbo->getHeight(), GL_COLOR_BUFFER_BIT, GL_NEAREST));
+}
+
+GlBlitTask::GlBlitTask(GlProgram* program, GLuint target, GlRenderTarget* fbo, Array<GlRenderTask*>&& tasks)
+ : GlComposeTask(program, target, fbo, std::move(tasks))
 {
 }
 
@@ -144,8 +220,8 @@ void GlBlitTask::run()
     GL_CHECK(glBlitFramebuffer(0, 0, mWidth, mHeight, 0, 0, mWidth, mHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST));
 }
 
-GlDrawBlitTask::GlDrawBlitTask(GlProgram* program, GLuint target, GLuint compose, Array<GlRenderTask*>&& tasks)
- : GlComposeTask(program, target, compose, std::move(tasks))
+GlDrawBlitTask::GlDrawBlitTask(GlProgram* program, GLuint target, GlRenderTarget* fbo, Array<GlRenderTask*>&& tasks)
+ : GlComposeTask(program, target, fbo, std::move(tasks))
 {
 }
 
