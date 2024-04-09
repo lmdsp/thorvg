@@ -14,6 +14,7 @@ auto ret = fread(content, sizeof(char), size, f);
 
         //hack for  windows !!! don't know why but sometimes size is not correct
         // e.g. size == 33113, ret == 31708
+        #define FLUX_TVG_LOTTIE_PATCHED
         if (ret < size - (size / 16))
         {
             fclose(f);
