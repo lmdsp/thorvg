@@ -175,6 +175,17 @@ struct LottieFont
     Origin origin = Embedded;
 };
 
+struct LottieMarker
+{
+    char* name = nullptr;
+    float time = 0.0f;
+    float duration = 0.0f;
+    
+    ~LottieMarker()
+    {
+        free(name);
+    }
+};
 
 struct LottieText : LottieObject
 {
@@ -617,7 +628,7 @@ struct LottieLayer : LottieGroup
     RGB24 color;  //used by Solid layer
 
     float timeStretch = 1.0f;
-    uint32_t w = 0, h = 0;
+    float w = 0.0f, h = 0.0f;
     float inFrame = 0.0f;
     float outFrame = 0.0f;
     float startFrame = 0.0f;
@@ -758,13 +769,14 @@ struct LottieComposition
     LottieLayer* root = nullptr;
     char* version = nullptr;
     char* name = nullptr;
-    uint32_t w, h;
+    float w, h;
     float startFrame, endFrame;
     float frameRate;
     Array<LottieObject*> assets;
     Array<LottieInterpolator*> interpolators;
     Array<LottieFont*> fonts;
     Array<LottieSlot*> slots;
+    Array<LottieMarker*> markers;
     bool initiated = false;
 };
 

@@ -55,7 +55,7 @@ private:
 
     void getInperpolatorPoint(Point& pt);
     void getPathSet(LottiePathSet& path);
-    void getLayerSize(uint32_t& val);
+    void getLayerSize(float& val);
     void getValue(TextDocument& doc);
     void getValue(PathSet& path);
     void getValue(Array<Point>& pts);
@@ -92,6 +92,7 @@ private:
     LottieTrimpath* parseTrimpath();
     LottieRepeater* parseRepeater();
     LottieFont* parseFont();
+    LottieMarker* parseMarker();
 
     void parseObject(Array<LottieObject*>& parent);
     void parseShapes(Array<LottieObject*>& parent);
@@ -104,6 +105,7 @@ private:
     void parseAssets();
     void parseFonts();
     void parseChars(Array<LottieGlyph*>& glyphes);
+    void parseMarkers();
     void postProcess(Array<LottieGlyph*>& glyphes);
 
     //Current parsing context

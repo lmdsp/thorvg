@@ -1,7 +1,7 @@
 project('thorvg',
         'cpp',
         default_options : ['buildtype=debugoptimized', 'b_sanitize=none', 'werror=false', 'optimization=s', 'cpp_std=c++14', 'strip=true'],
-        version : '0.13.0',
+        version : '0.13.1',
         license : 'MIT')
 
 config_h = configuration_data()
@@ -85,13 +85,16 @@ endif
 #Vectorization
 simd_type = 'none'
 
-if get_option('vector') == true
-  if host_machine.cpu_family() == 'x86' or host_machine.cpu_family() == 'x86_64'
+if get_option('simd') == true
+  if host_machine.cpu_family().startswith('x86')
     config_h.set10('THORVG_AVX_VECTOR_SUPPORT', true)
     simd_type = 'avx'
-  elif host_machine.cpu_family() == 'arm'
+  elif host_machine.cpu_family().startswith('arm')
     config_h.set10('THORVG_NEON_VECTOR_SUPPORT', true)
-    simd_type = 'neon'
+    simd_type = 'neon-arm'
+  elif host_machine.cpu().startswith('aarch')
+    config_h.set10('THORVG_NEON_VECTOR_SUPPORT', true)
+    simd_type = 'neon-aarch'
   endif
 endif
 
