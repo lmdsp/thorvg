@@ -1104,6 +1104,7 @@ static void _handleFillRuleAttr(TVG_UNUSED SvgLoaderData* loader, SvgNode* node,
 
 static void _handleOpacityAttr(TVG_UNUSED SvgLoaderData* loader, SvgNode* node, const char* value)
 {
+    node->style->flags = (node->style->flags | SvgStyleFlags::Opacity);
     node->style->opacity = _toOpacity(value);
 }
 
@@ -1155,8 +1156,9 @@ static void _handleDisplayAttr(TVG_UNUSED SvgLoaderData* loader, SvgNode* node, 
     //       The default is "inline" which means visible and "none" means invisible.
     //       Depending on the type of node, additional functionality may be required.
     //       refer to https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/display
-    if (!strcmp(value, "none")) node->display = false;
-    else node->display = true;
+    node->style->flags = (node->style->flags | SvgStyleFlags::Display);
+    if (!strcmp(value, "none")) node->style->display = false;
+    else node->style->display = true;
 }
 
 
@@ -1441,7 +1443,7 @@ static SvgNode* _createNode(SvgNode* parent, SvgNodeType type)
     node->style->paintOrder = _toPaintOrder("fill stroke");
 
     //Default display is true("inline").
-    node->display = true;
+    node->style->display = true;
 
     node->parent = parent;
     node->type = type;
@@ -1517,7 +1519,7 @@ static SvgNode* _createClipPathNode(SvgLoaderData* loader, SvgNode* parent, cons
     loader->svgParse->node = _createNode(parent, SvgNodeType::ClipPath);
     if (!loader->svgParse->node) return nullptr;
 
-    loader->svgParse->node->display = false;
+    loader->svgParse->node->style->display = false;
     loader->svgParse->node->node.clip.userSpace = true;
 
     func(buf, bufLength, _attrParseClipPathNode, loader);
@@ -1542,7 +1544,6 @@ static SvgNode* _createSymbolNode(SvgLoaderData* loader, SvgNode* parent, const 
     loader->svgParse->node = _createNode(parent, SvgNodeType::Symbol);
     if (!loader->svgParse->node) return nullptr;
 
-    loader->svgParse->node->display = false;
     loader->svgParse->node->node.symbol.align = AspectRatioAlign::XMidYMid;
     loader->svgParse->node->node.symbol.meetOrSlice = AspectRatioMeetOrSlice::Meet;
     loader->svgParse->node->node.symbol.overflowVisible = false;
@@ -1724,8 +1725,11 @@ static SvgNode* _createEllipseNode(SvgLoaderData* loader, SvgNode* parent, const
 
 static bool _attrParsePolygonPoints(const char* str, SvgPolygonNode* polygon)
 {
-    float num;
-    while (_parseNumber(&str, nullptr, &num)) polygon->pts.push(num);
+    float num_x, num_y;
+    while (_parseNumber(&str, nullptr, &num_x) && _parseNumber(&str, nullptr, &num_y)) {
+        polygon->pts.push(num_x);
+        polygon->pts.push(num_y);
+    }
     return true;
 }
 
@@ -2959,8 +2963,14 @@ static void _styleCopy(SvgStyleProperty* to, const SvgStyleProperty* from)
         to->color = from->color;
         to->curColorSet = true;
     }
+    if (from->flags & SvgStyleFlags::Opacity) {
+        to->opacity = from->opacity;
+    }
     if (from->flags & SvgStyleFlags::PaintOrder) {
         to->paintOrder = from->paintOrder;
+    }
+    if (from->flags & SvgStyleFlags::Display) {
+        to->display = from->display;
     }
     //Fill
     to->fill.flags = (to->fill.flags | from->fill.flags);
@@ -3190,6 +3200,14 @@ static void _svgLoaderParserXmlClose(SvgLoaderData* loader, const char* content)
         }
     }
 
+    for (unsigned int i = 0; i < sizeof(graphicsTags) / sizeof(graphicsTags[0]); i++) {
+        if (!strncmp(content, graphicsTags[i].tag, graphicsTags[i].sz - 1)) {
+            loader->currentGraphicsNode = nullptr;
+            loader->stack.pop();
+            break;
+        }
+    }
+
     loader->level--;
 }
 
@@ -3256,6 +3274,11 @@ static void _svgLoaderParserXmlOpen(SvgLoaderData* loader, const char* content, 
         if (loader->stack.count > 0) parent = loader->stack.last();
         else parent = loader->doc;
         node = method(loader, parent, attrs, attrsLength, simpleXmlParseAttributes);
+        if (node && !empty) {
+            auto defs = _createDefsNode(loader, nullptr, nullptr, 0, nullptr);
+            loader->stack.push(defs);
+            loader->currentGraphicsNode = node;
+        }
     } else if ((gradientMethod = _findGradientFactory(tagName))) {
         SvgStyleGradient* gradient;
         gradient = gradientMethod(loader, attrs, attrsLength);
@@ -3367,7 +3390,7 @@ static void _inefficientNodeCheck(TVG_UNUSED SvgNode* node)
 #ifdef THORVG_LOG_ENABLED
     auto type = simpleXmlNodeTypeToString(node->type);
 
-    if (!node->display && node->type != SvgNodeType::ClipPath && node->type != SvgNodeType::Symbol) TVGLOG("SVG", "Inefficient elements used [Display is none][Node Type : %s]", type);
+    if (!node->style->display && node->type != SvgNodeType::ClipPath) TVGLOG("SVG", "Inefficient elements used [Display is none][Node Type : %s]", type);
     if (node->style->opacity == 0) TVGLOG("SVG", "Inefficient elements used [Opacity is zero][Node Type : %s]", type);
     if (node->style->fill.opacity == 0 && node->style->stroke.opacity == 0) TVGLOG("SVG", "Inefficient elements used [Fill opacity and stroke opacity are zero][Node Type : %s]", type);
 

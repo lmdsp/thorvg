@@ -36,7 +36,7 @@ TEST_CASE("Animation Basic", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier == Picture::identifier);
+    REQUIRE(picture->identifier() == Picture::identifier());
 
     //Negative cases
     REQUIRE(animation->frame(0.0f) == Result::InsufficientCondition);
@@ -55,7 +55,7 @@ TEST_CASE("Animation Lottie", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier == Picture::identifier);
+    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/invalid.json") == Result::InvalidArguments);
     REQUIRE(picture->load(TEST_DIR"/test.json") == Result::Success);
@@ -76,7 +76,7 @@ TEST_CASE("Animation Lottie2", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier == Picture::identifier);
+    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test2.json") == Result::Success);
 
@@ -93,7 +93,7 @@ TEST_CASE("Animation Lottie3", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier == Picture::identifier);
+    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test3.json") == Result::Success);
     
@@ -108,7 +108,7 @@ TEST_CASE("Animation Lottie4", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier == Picture::identifier);
+    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test4.json") == Result::Success);
 
@@ -123,7 +123,7 @@ TEST_CASE("Animation Lottie5", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier == Picture::identifier);
+    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test5.json") == Result::Success);
     
@@ -138,7 +138,7 @@ TEST_CASE("Animation Lottie6", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier == Picture::identifier);
+    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test6.json") == Result::Success);
 
@@ -153,7 +153,7 @@ TEST_CASE("Animation Lottie7", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier == Picture::identifier);
+    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test7.json") == Result::Success);
 
@@ -168,7 +168,7 @@ TEST_CASE("Animation Lottie8", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier == Picture::identifier);
+    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test8.json") == Result::Success);
 
@@ -183,9 +183,57 @@ TEST_CASE("Animation Lottie9", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier == Picture::identifier);
+    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test9.json") == Result::Success);
+
+    REQUIRE(Initializer::term(CanvasEngine::Sw) == Result::Success);
+}
+
+TEST_CASE("Animation Segment", "[tvgAnimation]")
+{
+    REQUIRE(Initializer::init(CanvasEngine::Sw, 0) == Result::Success);
+
+    auto animation = Animation::gen();
+    REQUIRE(animation);
+
+    auto picture = animation->picture();
+    REQUIRE(picture->identifier() == Picture::identifier());
+
+    float begin, end;
+
+    //Segment by range before loaded
+    REQUIRE(animation->segment(0, 0.5) == Result::InsufficientCondition);
+
+    //Get current segment before loaded
+    REQUIRE(animation->segment(&begin, &end) == Result::InsufficientCondition);
+
+    //Animation load
+    REQUIRE(picture->load(TEST_DIR"/lottiemarker.json") == Result::Success);
+
+    //Get current segment before segment
+    REQUIRE(animation->segment(&begin, &end) == Result::Success);
+    REQUIRE(begin == 0.0f);
+    REQUIRE(end == 1.0f);
+
+    //Segment by range
+    REQUIRE(animation->segment(0.25, 0.5) == Result::Success);
+
+    //Get current segment
+    REQUIRE(animation->segment(&begin, &end) == Result::Success);
+    REQUIRE(begin == 0.25);
+    REQUIRE(end == 0.5);
+
+    //Get only segment begin
+    REQUIRE(animation->segment(&begin) == Result::Success);
+    REQUIRE(begin == 0.25);
+
+    //Get only segment end
+    REQUIRE(animation->segment(nullptr, &end) == Result::Success);
+    REQUIRE(end == 0.5);
+
+    //Segment by invalid range
+    REQUIRE(animation->segment(-0.5, 1.5) == Result::InvalidArguments);
 
     REQUIRE(Initializer::term(CanvasEngine::Sw) == Result::Success);
 }

@@ -1,13 +1,19 @@
+if lottie_expressions
+    subdir('jerryscript')
+endif
+
 source_file = [
-   'tvgLottieAnimation.cpp',
    'tvgLottieBuilder.h',
+   'tvgLottieExpressions.h',
    'tvgLottieInterpolator.h',
    'tvgLottieLoader.h',
    'tvgLottieModel.h',
    'tvgLottieParser.h',
    'tvgLottieParserHandler.h',
    'tvgLottieProperty.h',
+   'tvgLottieAnimation.cpp',
    'tvgLottieBuilder.cpp',
+   'tvgLottieExpressions.cpp',
    'tvgLottieInterpolator.cpp',
    'tvgLottieLoader.cpp',
    'tvgLottieModel.cpp',

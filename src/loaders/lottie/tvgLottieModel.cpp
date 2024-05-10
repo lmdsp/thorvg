@@ -46,11 +46,11 @@ LottieImage::~LottieImage()
 }
 
 
-void LottieTrimpath::segment(float frameNo, float& start, float& end)
+void LottieTrimpath::segment(float frameNo, float& start, float& end, LottieExpressions* exps)
 {
-    auto s = this->start(frameNo) * 0.01f;
-    auto e = this->end(frameNo) * 0.01f;
-    auto o = fmodf(this->offset(frameNo), 360.0f) / 360.0f;  //0 ~ 1
+    auto s = this->start(frameNo, exps) * 0.01f;
+    auto e = this->end(frameNo, exps) * 0.01f;
+    auto o = fmodf(this->offset(frameNo, exps), 360.0f) / 360.0f;  //0 ~ 1
 
     auto diff = fabs(s - e);
     if (mathZero(diff)) {
@@ -89,44 +89,42 @@ void LottieTrimpath::segment(float frameNo, float& start, float& end)
 }
 
 
-Fill* LottieGradient::fill(float frameNo)
+Fill* LottieGradient::fill(float frameNo, LottieExpressions* exps)
 {
     Fill* fill = nullptr;
+    auto s = start(frameNo, exps);
+    auto e = end(frameNo, exps);
 
     //Linear Graident
     if (id == 1) {
         fill = LinearGradient::gen().release();
-        static_cast<LinearGradient*>(fill)->linear(start(frameNo).x, start(frameNo).y, end(frameNo).x, end(frameNo).y);
+        static_cast<LinearGradient*>(fill)->linear(s.x, s.y, e.x, e.y);
     }
     //Radial Gradient
     if (id == 2) {
         fill = RadialGradient::gen().release();
 
-        auto sx = start(frameNo).x;
-        auto sy = start(frameNo).y;
-        auto ex = end(frameNo).x;
-        auto ey = end(frameNo).y;
-        auto w = fabsf(ex - sx);
-        auto h = fabsf(ey - sy);
+        auto w = fabsf(e.x - s.x);
+        auto h = fabsf(e.y - s.y);
         auto r = (w > h) ? (w + 0.375f * h) : (h + 0.375f * w);
-        auto progress = this->height(frameNo) * 0.01f;
+        auto progress = this->height(frameNo, exps) * 0.01f;
 
         if (mathZero(progress)) {
-            P(static_cast<RadialGradient*>(fill))->radial(sx, sy, r, sx, sy, 0.0f);
+            P(static_cast<RadialGradient*>(fill))->radial(s.x, s.y, r, s.x, s.y, 0.0f);
         } else {
             if (mathEqual(progress, 1.0f)) progress = 0.99f;
-            auto startAngle = mathRad2Deg(atan2(ey - sy, ex - sx));
-            auto angle = mathDeg2Rad((startAngle + this->angle(frameNo)));
-            auto fx = sx + cos(angle) * progress * r;
-            auto fy = sy + sin(angle) * progress * r;
+            auto startAngle = mathRad2Deg(atan2(e.y - s.y, e.x - s.x));
+            auto angle = mathDeg2Rad((startAngle + this->angle(frameNo, exps)));
+            auto fx = s.x + cos(angle) * progress * r;
+            auto fy = s.y + sin(angle) * progress * r;
             // Lottie dosen't have any focal radius concept
-            P(static_cast<RadialGradient*>(fill))->radial(sx, sy, r, fx, fy, 0.0f);
+            P(static_cast<RadialGradient*>(fill))->radial(s.x, s.y, r, fx, fy, 0.0f);
         }
     }
 
     if (!fill) return nullptr;
 
-    colorStops(frameNo, fill);
+    colorStops(frameNo, fill, exps);
 
     return fill;
 }
@@ -209,6 +207,7 @@ void LottieLayer::prepare()
        so force it to be a Null Layer and release all resource. */
     if (hidden) {
         type = LottieLayer::Null;
+        for (auto p = children.begin(); p < children.end(); ++p) delete(*p);
         children.reset();
         return;
     }
@@ -216,10 +215,10 @@ void LottieLayer::prepare()
 }
 
 
-float LottieLayer::remap(float frameNo)
+float LottieLayer::remap(float frameNo, LottieExpressions* exp)
 {
     if (timeRemap.frames || timeRemap.value) {
-        frameNo = comp->frameAtTime(timeRemap(frameNo));
+        frameNo = comp->frameAtTime(timeRemap(frameNo, exp));
     } else {
         frameNo -= startFrame;
     }

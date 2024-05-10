@@ -51,27 +51,21 @@ struct LottieStroke
         return dashattr->value[no];
     }
 
-    float dashOffset(float frameNo)
+    float dashOffset(float frameNo, LottieExpressions* exps)
     {
-        return dash(0)(frameNo);
+        return dash(0)(frameNo, exps);
     }
 
-    float dashGap(float frameNo)
+    float dashGap(float frameNo, LottieExpressions* exps)
     {
-        return dash(2)(frameNo);
+        return dash(2)(frameNo, exps);
     }
 
-    float dashSize(float frameNo)
+    float dashSize(float frameNo, LottieExpressions* exps)
     {
-        auto d = dash(1)(frameNo);
+        auto d = dash(1)(frameNo, exps);
         if (d == 0.0f) return 0.1f;
         else return d;
-    }
-
-    bool dynamic()
-    {
-        if (width.frames || dashattr) return true;
-        return false;
     }
 
     LottieFloat width = 0.0f;
@@ -221,7 +215,7 @@ struct LottieTrimpath : LottieObject
         return false;
     }
 
-    void segment(float frameNo, float& start, float& end);
+    void segment(float frameNo, float& start, float& end, LottieExpressions* exps);
 
     LottieFloat start = 0.0f;
     LottieFloat end = 100.0f;
@@ -489,7 +483,7 @@ struct LottieGradient : LottieObject
         return false;
     }
 
-    Fill* fill(float frameNo);
+    Fill* fill(float frameNo, LottieExpressions* exps);
 
     LottiePoint start = Point{0.0f, 0.0f};
     LottiePoint end = Point{0.0f, 0.0f};
@@ -586,6 +580,20 @@ struct LottieGroup : LottieObject
     void prepare(LottieObject::Type type = LottieObject::Group);
     bool mergeable() override { return allowMerge; }
 
+    LottieObject* content(const char* id)
+    {
+        if (name && !strcmp(name, id)) return this;
+
+        //source has children, find recursively.
+        for (auto c = children.begin(); c < children.end(); ++c) {
+            auto child = *c;
+            if (child->type == LottieObject::Type::Group || child->type == LottieObject::Type::Layer) {
+                if (auto ret = static_cast<LottieGroup*>(child)->content(id)) return ret;
+            } else if (child->name && !strcmp(child->name, id)) return child;
+        }
+        return nullptr;
+    }
+
     Scene* scene = nullptr;               //tvg render data
     Array<LottieObject*> children;
 
@@ -612,7 +620,7 @@ struct LottieLayer : LottieGroup
     bool mergeable() override { return false; }
 
     void prepare();
-    float remap(float frameNo);
+    float remap(float frameNo, LottieExpressions* exp);
 
     struct {
         CompositeMethod type = CompositeMethod::None;
@@ -761,9 +769,41 @@ struct LottieComposition
         return p * frameCnt();
     }
 
+    float timeAtFrame(float frameNo)
+    {
+        return (frameNo - startFrame) / frameRate;
+    }
+
     float frameCnt() const
     {
         return endFrame - startFrame;
+    }
+
+    LottieLayer* layer(const char* name)
+    {
+        for (auto child = root->children.begin(); child < root->children.end(); ++child) {
+            auto layer = static_cast<LottieLayer*>(*child);
+            if (layer->name && !strcmp(layer->name, name)) return layer;
+        }
+        return nullptr;
+    }
+
+    LottieLayer* layer(int16_t id)
+    {
+        for (auto child = root->children.begin(); child < root->children.end(); ++child) {
+            auto layer = static_cast<LottieLayer*>(*child);
+            if (layer->id == id) return layer;
+        }
+        return nullptr;
+    }
+
+    LottieLayer* asset(const char* name)
+    {
+        for (auto asset = assets.begin(); asset < assets.end(); ++asset) {
+            auto layer = static_cast<LottieLayer*>(*asset);
+            if (layer->name && !strcmp(layer->name, name)) return layer;
+        }
+        return nullptr;
     }
 
     LottieLayer* root = nullptr;
@@ -777,6 +817,7 @@ struct LottieComposition
     Array<LottieFont*> fonts;
     Array<LottieSlot*> slots;
     Array<LottieMarker*> markers;
+    bool expressions = false;
     bool initiated = false;
 };
 
