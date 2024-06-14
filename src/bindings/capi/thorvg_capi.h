@@ -122,7 +122,7 @@ typedef enum {
     TVG_RESULT_INSUFFICIENT_CONDITION, ///< The value returned in case the request cannot be processed - e.g. asking for properties of an object, which does not exist.
     TVG_RESULT_FAILED_ALLOCATION,      ///< The value returned in case of unsuccessful memory allocation.
     TVG_RESULT_MEMORY_CORRUPTION,      ///< The value returned in the event of bad memory handling - e.g. failing in pointer releasing or casting
-    TVG_RESULT_NOT_SUPPORTED,          ///< The value returned in case of choosing unsupported options.
+    TVG_RESULT_NOT_SUPPORTED,          ///< The value returned in case of choosing unsupported engine features(options).
     TVG_RESULT_UNKNOWN                 ///< The value returned in all other cases.
 } Tvg_Result;
 
@@ -429,7 +429,7 @@ typedef enum {
 *
 * \return A new Tvg_Canvas object.
 */
-TVG_API Tvg_Canvas* tvg_swcanvas_create();
+TVG_API Tvg_Canvas* tvg_swcanvas_create(void);
 
 
 /*!
@@ -453,7 +453,7 @@ TVG_API Tvg_Canvas* tvg_swcanvas_create();
 * \retval TVG_RESULT_INVALID_ARGUMENTS An invalid canvas or buffer pointer passed or one of the @p stride, @p w or @p h being zero.
 * \retval TVG_RESULT_NOT_SUPPORTED The software engine is not supported.
 *
-* \warning Do not access @p buffer during tvg_canvas_draw() - tvg_canvas_sync(). It should not be accessed while TVG is writing on it.
+* \warning Do not access @p buffer during tvg_canvas_draw() - tvg_canvas_sync(). It should not be accessed while the engine is writing on it.
 *
 * \see Tvg_Colorspace
 */
@@ -742,6 +742,30 @@ TVG_API Tvg_Result tvg_canvas_draw(Tvg_Canvas* canvas);
 */
 TVG_API Tvg_Result tvg_canvas_sync(Tvg_Canvas* canvas);
 
+
+/*!
+* \brief Sets the drawing region in the canvas.
+*
+* This function defines the rectangular area of the canvas that will be used for drawing operations.
+* The specified viewport is used to clip the rendering output to the boundaries of the rectangle.
+*
+* \param[in] canvas The Tvg_Canvas object containing elements which were drawn.
+* \param[in] x The x-coordinate of the upper-left corner of the rectangle.
+* \param[in] y The y-coordinate of the upper-left corner of the rectangle.
+* \param[in] w The width of the rectangle.
+* \param[in] h The height of the rectangle.
+*
+* \return Tvg_Result enumeration.
+* \retval TVG_RESULT_SUCCESS Succeed.
+* \retval TVG_RESULT_INSUFFICIENT_CONDITION An internal error.
+*
+* \warning It's not allowed to change the viewport during tvg_canvas_update() - tvg_canvas_sync() or tvg_canvas_push() - tvg_canvas_sync().
+*
+* \note When resetting the target, the viewport will also be reset to the target size.
+* \note Experimental API
+* \see tvg_swcanvas_set_target()
+*/
+TVG_API Tvg_Result tvg_canvas_set_viewport(Tvg_Canvas* canvas, int32_t x, int32_t y, int32_t w, int32_t h);
 
 /** \} */   // end defgroup ThorVGCapi_Canvas
 
@@ -1033,7 +1057,7 @@ TVG_API Tvg_Result tvg_paint_get_blend_method(const Tvg_Paint* paint, Tvg_Blend_
 *
 * \return A new shape object.
 */
-TVG_API Tvg_Paint* tvg_shape_new();
+TVG_API Tvg_Paint* tvg_shape_new(void);
 
 
 /*!
@@ -1281,7 +1305,6 @@ TVG_API Tvg_Result tvg_shape_get_path_commands(const Tvg_Paint* paint, const Tvg
 * \return Tvg_Result enumeration.
 * \retval TVG_RESULT_SUCCESS Succeed.
 * \retval TVG_RESULT_INVALID_ARGUMENT An invalid Tvg_Paint pointer.
-* \retval TVG_RESULT_FAILED_ALLOCATION An internal error with a memory allocation.
 */
 TVG_API Tvg_Result tvg_shape_set_stroke_width(Tvg_Paint* paint, float width);
 
@@ -1311,7 +1334,6 @@ TVG_API Tvg_Result tvg_shape_get_stroke_width(const Tvg_Paint* paint, float* wid
 * \return Tvg_Result enumeration.
 * \retval TVG_RESULT_SUCCESS Succeed.
 * \retval TVG_RESULT_INVALID_ARGUMENT An invalid Tvg_Paint pointer.
-* \retval TVG_RESULT_FAILED_ALLOCATION An internal error with a memory allocation.
 *
 * \note Either a solid color or a gradient fill is applied, depending on what was set as last.
 */
@@ -1344,8 +1366,7 @@ TVG_API Tvg_Result tvg_shape_get_stroke_color(const Tvg_Paint* paint, uint8_t* r
 * \return Tvg_Result enumeration.
 * \retval TVG_RESULT_SUCCESS Succeed.
 * \retval TVG_RESULT_INVALID_ARGUMENT An invalid Tvg_Paint pointer.
-* \retval TVG_RESULT_FAILED_ALLOCATION An internal error with a memory allocation.
-* \retval TVG_RESULT_MEMORY_CORRUPTION An invalid Tvg_Gradient pointer.
+* \retval TVG_RESULT_MEMORY_CORRUPTION An invalid Tvg_Gradient pointer or an error with accessing it.
 *
 * \note Either a solid color or a gradient fill is applied, depending on what was set as last.
 */
@@ -1361,8 +1382,7 @@ TVG_API Tvg_Result tvg_shape_set_stroke_linear_gradient(Tvg_Paint* paint, Tvg_Gr
 * \return Tvg_Result enumeration.
 * \retval TVG_RESULT_SUCCESS Succeed.
 * \retval TVG_RESULT_INVALID_ARGUMENT An invalid Tvg_Paint pointer.
-* \retval TVG_RESULT_FAILED_ALLOCATION An internal error with a memory allocation.
-* \retval TVG_RESULT_MEMORY_CORRUPTION An invalid Tvg_Gradient pointer.
+* \retval TVG_RESULT_MEMORY_CORRUPTION An invalid Tvg_Gradient pointer or an error with accessing it.
 *
 * \note Either a solid color or a gradient fill is applied, depending on what was set as last.
 */
@@ -1435,7 +1455,6 @@ TVG_API Tvg_Result tvg_shape_get_stroke_dash(const Tvg_Paint* paint, const float
 * \return Tvg_Result enumeration.
 * \retval TVG_RESULT_SUCCESS Succeed.
 * \retval TVG_RESULT_INVALID_ARGUMENT An invalid Tvg_Paint pointer.
-* \retval TVG_RESULT_FAILED_ALLOCATION An internal error with a memory allocation.
 */
 TVG_API Tvg_Result tvg_shape_set_stroke_cap(Tvg_Paint* paint, Tvg_Stroke_Cap cap);
 
@@ -1462,7 +1481,6 @@ TVG_API Tvg_Result tvg_shape_get_stroke_cap(const Tvg_Paint* paint, Tvg_Stroke_C
 * \return Tvg_Result enumeration.
 * \retval TVG_RESULT_SUCCESS Succeed.
 * \retval TVG_RESULT_INVALID_ARGUMENT An invalid Tvg_Paint pointer.
-* \retval TVG_RESULT_FAILED_ALLOCATION An internal error with a memory allocation.
 */
 TVG_API Tvg_Result tvg_shape_set_stroke_join(Tvg_Paint* paint, Tvg_Stroke_Join join);
 
@@ -1488,9 +1506,7 @@ TVG_API Tvg_Result tvg_shape_get_stroke_join(const Tvg_Paint* paint, Tvg_Stroke_
 *
 * \return Tvg_Result enumeration.
 * \retval TVG_RESULT_SUCCESS Succeed.
-* \retval TVG_RESULT_INVALID_ARGUMENT An invalid Tvg_Paint pointer.
-* \retval TVG_RESULT_NOT_SUPPORTED Unsupported value.
-* \retval TVG_RESULT_FAILED_ALLOCATION An internal error with a memory allocation.
+* \retval TVG_RESULT_INVALID_ARGUMENT An invalid Tvg_Paint pointer or Unsupported @p miterlimit values (less than zero).
 *
 * \since 0.11
 */
@@ -1584,7 +1600,6 @@ TVG_API Tvg_Result tvg_shape_get_fill_rule(const Tvg_Paint* paint, Tvg_Fill_Rule
 * \return Tvg_Result enumeration.
 * \retval TVG_RESULT_SUCCESS Succeed.
 * \retval TVG_RESULT_INVALID_ARGUMENT An invalid Tvg_Paint pointer.
-* \retval TVG_RESULT_FAILED_ALLOCATION An internal error with a memory allocation.
 *
 * \since 0.10
 */
@@ -1708,7 +1723,7 @@ TVG_API Tvg_Result tvg_shape_get_gradient(const Tvg_Paint* paint, Tvg_Gradient**
 *
 * \return A new linear gradient object.
 */
-TVG_API Tvg_Gradient* tvg_linear_gradient_new();
+TVG_API Tvg_Gradient* tvg_linear_gradient_new(void);
 
 
 /*!
@@ -1730,7 +1745,7 @@ TVG_API Tvg_Gradient* tvg_linear_gradient_new();
 *
 * \return A new radial gradient object.
 */
-TVG_API Tvg_Gradient* tvg_radial_gradient_new();
+TVG_API Tvg_Gradient* tvg_radial_gradient_new(void);
 
 
 /*!
@@ -1952,7 +1967,7 @@ TVG_API Tvg_Result tvg_gradient_del(Tvg_Gradient* grad);
 *
 * \return A new picture object.
 */
-TVG_API Tvg_Paint* tvg_picture_new();
+TVG_API Tvg_Paint* tvg_picture_new(void);
 
 
 /*!
@@ -2078,7 +2093,7 @@ TVG_API Tvg_Result tvg_picture_get_size(const Tvg_Paint* paint, float* w, float*
 *
 * \return A new scene object.
 */
-TVG_API Tvg_Paint* tvg_scene_new();
+TVG_API Tvg_Paint* tvg_scene_new(void);
 
 
 /*!
@@ -2156,7 +2171,7 @@ TVG_API Tvg_Result tvg_scene_clear(Tvg_Paint* scene, bool free);
 *
 * \return A new Tvg_Saver object.
 */
-TVG_API Tvg_Saver* tvg_saver_new();
+TVG_API Tvg_Saver* tvg_saver_new(void);
 
 
 /*!
@@ -2240,7 +2255,7 @@ TVG_API Tvg_Result tvg_saver_del(Tvg_Saver* saver);
 *
 * \since 0.13
 */
-TVG_API Tvg_Animation* tvg_animation_new();
+TVG_API Tvg_Animation* tvg_animation_new(void);
 
 
 /*!
@@ -2257,6 +2272,7 @@ TVG_API Tvg_Animation* tvg_animation_new();
 *
 * \note For efficiency, ThorVG ignores updates to the new frame value if the difference from the current frame value
 *       is less than 0.001. In such cases, it returns @c Result::InsufficientCondition.
+*       Values less than 0.001 may be disregarded and may not be accurately retained by the Animation.
 * \see tvg_animation_get_total_frame()
 *
 * \since 0.13
@@ -2401,7 +2417,7 @@ TVG_API Tvg_Result tvg_animation_del(Tvg_Animation* animation);
 *
 * \return Tvg_Animation A new Tvg_LottieAnimation object.
 */
-TVG_API Tvg_Animation* tvg_lottie_animation_new();
+TVG_API Tvg_Animation* tvg_lottie_animation_new(void);
 
 
 /*!

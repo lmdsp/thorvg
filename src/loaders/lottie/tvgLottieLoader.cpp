@@ -42,6 +42,7 @@ void LottieLoader::run(unsigned tid)
         comp = parser.comp;
         builder->build(comp);
     }
+    rebuild = false;
 }
 
 
@@ -164,7 +165,7 @@ bool LottieLoader::header()
         ++p;
     }
 
-    if (frameRate < FLT_EPSILON) {
+    if (frameRate < FLOAT_EPSILON) {
         TVGLOG("LOTTIE", "Not a Lottie file? Frame rate is 0!");
         return false;
     }
@@ -302,14 +303,14 @@ bool LottieLoader::override(const char* slot)
 
         if (idx < 1) success = false;
         free(temp);
-        overriden = success;
-
+        rebuild = overriden = success;
     //reset slots
     } else if (overriden) {
         for (auto s = comp->slots.begin(); s < comp->slots.end(); ++s) {
             (*s)->reset();
         }
         overriden = false;
+        rebuild = true;
     }
     return success;
 }
@@ -317,17 +318,19 @@ bool LottieLoader::override(const char* slot)
 
 bool LottieLoader::frame(float no)
 {
+    auto frameNo = no + startFrame();
+
+    //This ensures that the target frame number is reached.
+    frameNo *= 10000.0f;
+    frameNo = roundf(frameNo);
+    frameNo *= 0.0001f;
+
     //Skip update if frame diff is too small.
-    if (fabsf(this->frameNo - no) < 0.0009f) return false;
+    if (fabsf(this->frameNo - frameNo) <= 0.0009f) return false;
 
     this->done();
 
-    //This ensures that the perfect last frame is reached.
-    no *= 1000.0f;
-    no = roundf(no);
-    no *= 0.001f;
-
-    this->frameNo = no + startFrame();
+    this->frameNo = frameNo;
 
     TaskScheduler::request(this);
 
@@ -367,6 +370,8 @@ float LottieLoader::duration()
 void LottieLoader::sync()
 {
     this->done();
+
+    if (rebuild) run(0);
 }
 
 

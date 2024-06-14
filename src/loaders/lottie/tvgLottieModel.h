@@ -110,7 +110,6 @@ struct LottieObject
 
     virtual ~LottieObject()
     {
-        free(name);
     }
 
     virtual void override(LottieProperty* prop)
@@ -120,7 +119,7 @@ struct LottieObject
 
     virtual bool mergeable() { return false; }
 
-    char* name = nullptr;
+    unsigned long id = 0;
     Type type;
     bool hidden = false;       //remove?
 };
@@ -338,6 +337,8 @@ struct LottieTransform : LottieObject
     LottiePoint scale = Point{100.0f, 100.0f};
     LottiePoint anchor = Point{0.0f, 0.0f};
     LottieOpacity opacity = 255;
+    LottieFloat skewAngle = 0.0f;
+    LottieFloat skewAxis = 0.0f;
 
     SeparateCoord* coords = nullptr;       //either a position or separate coordinates
     RotationEx* rotationEx = nullptr;      //extension for 3d rotation
@@ -385,89 +386,6 @@ struct LottieSolidFill : LottieSolid
 
 struct LottieGradient : LottieObject
 {
-    uint32_t populate(ColorStop& color)
-    {
-        colorStops.populated = true;
-        if (!color.input) return 0;
-
-        uint32_t alphaCnt = (color.input->count - (colorStops.count * 4)) / 2;
-        Array<Fill::ColorStop> output(colorStops.count + alphaCnt);
-        uint32_t cidx = 0;               //color count
-        uint32_t clast = colorStops.count * 4;
-        if (clast > color.input->count) clast = color.input->count;
-        uint32_t aidx = clast;           //alpha count
-        Fill::ColorStop cs;
-
-        //merge color stops.
-        for (uint32_t i = 0; i < color.input->count; ++i) {
-            if (cidx == clast || aidx == color.input->count) break;
-            if ((*color.input)[cidx] == (*color.input)[aidx]) {
-                cs.offset = (*color.input)[cidx];
-                cs.r = lroundf((*color.input)[cidx + 1] * 255.0f);
-                cs.g = lroundf((*color.input)[cidx + 2] * 255.0f);
-                cs.b = lroundf((*color.input)[cidx + 3] * 255.0f);
-                cs.a = lroundf((*color.input)[aidx + 1] * 255.0f);
-                cidx += 4;
-                aidx += 2;
-            } else if ((*color.input)[cidx] < (*color.input)[aidx]) {
-                cs.offset = (*color.input)[cidx];
-                cs.r = lroundf((*color.input)[cidx + 1] * 255.0f);
-                cs.g = lroundf((*color.input)[cidx + 2] * 255.0f);
-                cs.b = lroundf((*color.input)[cidx + 3] * 255.0f);
-                //generate alpha value
-                if (output.count > 0) {
-                    auto p = ((*color.input)[cidx] - output.last().offset) / ((*color.input)[aidx] - output.last().offset);
-                    cs.a = mathLerp<uint8_t>(output.last().a, lroundf((*color.input)[aidx + 1] * 255.0f), p);
-                } else cs.a = 255;
-                cidx += 4;
-            } else {
-                cs.offset = (*color.input)[aidx];
-                cs.a = lroundf((*color.input)[aidx + 1] * 255.0f);
-                //generate color value
-                if (output.count > 0) {
-                    auto p = ((*color.input)[aidx] - output.last().offset) / ((*color.input)[cidx] - output.last().offset);
-                    cs.r = mathLerp<uint8_t>(output.last().r, lroundf((*color.input)[cidx + 1] * 255.0f), p);
-                    cs.g = mathLerp<uint8_t>(output.last().g, lroundf((*color.input)[cidx + 2] * 255.0f), p);
-                    cs.b = mathLerp<uint8_t>(output.last().b, lroundf((*color.input)[cidx + 3] * 255.0f), p);
-                } else cs.r = cs.g = cs.b = 255;
-                aidx += 2;
-            }
-            output.push(cs);
-        }
-
-        //color remains
-        while (cidx + 3 < clast) {
-            cs.offset = (*color.input)[cidx];
-            cs.r = lroundf((*color.input)[cidx + 1] * 255.0f);
-            cs.g = lroundf((*color.input)[cidx + 2] * 255.0f);
-            cs.b = lroundf((*color.input)[cidx + 3] * 255.0f);
-            cs.a = (output.count > 0) ? output.last().a : 255;
-            output.push(cs);
-            cidx += 4;
-        }
-
-        //alpha remains
-        while (aidx < color.input->count) {
-            cs.offset = (*color.input)[aidx];
-            cs.a = lroundf((*color.input)[aidx + 1] * 255.0f);
-            if (output.count > 0) {
-                cs.r = output.last().r;
-                cs.g = output.last().g;
-                cs.b = output.last().b;
-            } else cs.r = cs.g = cs.b = 255;
-            output.push(cs);
-            aidx += 2;
-        }
-
-        color.data = output.data;
-        output.data = nullptr;
-
-        color.input->reset();
-        delete(color.input);
-
-        return output.count;
-    }
-
     bool prepare()
     {
         if (!colorStops.populated) {
@@ -483,6 +401,7 @@ struct LottieGradient : LottieObject
         return false;
     }
 
+    uint32_t populate(ColorStop& color);
     Fill* fill(float frameNo, LottieExpressions* exps);
 
     LottiePoint start = Point{0.0f, 0.0f};
@@ -580,16 +499,16 @@ struct LottieGroup : LottieObject
     void prepare(LottieObject::Type type = LottieObject::Group);
     bool mergeable() override { return allowMerge; }
 
-    LottieObject* content(const char* id)
+    LottieObject* content(unsigned long id)
     {
-        if (name && !strcmp(name, id)) return this;
+        if (this->id == id) return this;
 
         //source has children, find recursively.
         for (auto c = children.begin(); c < children.end(); ++c) {
             auto child = *c;
             if (child->type == LottieObject::Type::Group || child->type == LottieObject::Type::Layer) {
                 if (auto ret = static_cast<LottieGroup*>(child)->content(id)) return ret;
-            } else if (child->name && !strcmp(child->name, id)) return child;
+            } else if (child->id == id) return child;
         }
         return nullptr;
     }
@@ -622,38 +541,45 @@ struct LottieLayer : LottieGroup
     void prepare();
     float remap(float frameNo, LottieExpressions* exp);
 
-    struct {
-        CompositeMethod type = CompositeMethod::None;
-        LottieLayer* target = nullptr;
-    } matte;
-
-    BlendMethod blendMethod = BlendMethod::Normal;
+    char* name = nullptr;
     LottieLayer* parent = nullptr;
     LottieFloat timeRemap = 0.0f;
     LottieComposition* comp = nullptr;
     LottieTransform* transform = nullptr;
     Array<LottieMask*> masks;
     RGB24 color;  //used by Solid layer
+    LottieLayer* matteTarget = nullptr;
 
     float timeStretch = 1.0f;
     float w = 0.0f, h = 0.0f;
     float inFrame = 0.0f;
     float outFrame = 0.0f;
     float startFrame = 0.0f;
-    char* refId = nullptr;      //pre-composition reference.
-    int16_t pid = -1;           //id of the parent layer.
-    int16_t id = -1;            //id of the current layer.
+    unsigned long rid = 0;      //pre-composition reference id.
+    int16_t mid = -1;           //id of the matte layer.
+    int16_t pidx = -1;          //index of the parent layer.
+    int16_t idx = -1;           //index of the current layer.
 
-    //cached data
     struct {
         float frameNo = -1.0f;
         Matrix matrix;
         uint8_t opacity;
     } cache;
 
+    CompositeMethod matteType = CompositeMethod::None;
+    BlendMethod blendMethod = BlendMethod::Normal;
     Type type = Null;
     bool autoOrient = false;
     bool matteSrc = false;
+
+    LottieLayer* layerByIdx(int16_t idx)
+    {
+        for (auto child = children.begin(); child < children.end(); ++child) {
+            auto layer = static_cast<LottieLayer*>(*child);
+            if (layer->idx == idx) return layer;
+        }
+        return nullptr;
+    }
 };
 
 
@@ -664,73 +590,8 @@ struct LottieSlot
         LottieProperty* prop;
     };
 
-    void assign(LottieObject* target)
-    {
-        //apply slot object to all targets
-        for (auto pair = pairs.begin(); pair < pairs.end(); ++pair) {
-            //backup the original properties before overwriting
-            switch (type) {
-                case LottieProperty::Type::ColorStop: {
-                    if (!overriden) {
-                        pair->prop = new LottieColorStop;
-                        *static_cast<LottieColorStop*>(pair->prop) = static_cast<LottieGradient*>(pair->obj)->colorStops;
-                    }
-
-                    pair->obj->override(&static_cast<LottieGradient*>(target)->colorStops);
-                    break;
-                }
-                case LottieProperty::Type::Color: {
-                    if (!overriden) {
-                        pair->prop = new LottieColor;
-                        *static_cast<LottieColor*>(pair->prop) = static_cast<LottieSolid*>(pair->obj)->color;
-                    }
-
-                    pair->obj->override(&static_cast<LottieSolid*>(target)->color);
-                    break;
-                }
-                case LottieProperty::Type::TextDoc: {
-                    if (!overriden) {
-                        pair->prop = new LottieTextDoc;
-                        *static_cast<LottieTextDoc*>(pair->prop) = static_cast<LottieText*>(pair->obj)->doc;
-                    }
-
-                    pair->obj->override(&static_cast<LottieText*>(target)->doc);
-                    break;
-                }
-                default: break;
-            }
-        }
-        overriden = true;
-    }
-
-    void reset()
-    {
-        if (!overriden) return;
-
-        for (auto pair = pairs.begin(); pair < pairs.end(); ++pair) {
-            switch (type) {
-                case LottieProperty::Type::ColorStop: {
-                    static_cast<LottieGradient*>(pair->obj)->colorStops.release();
-                    static_cast<LottieGradient*>(pair->obj)->colorStops = *static_cast<LottieColorStop*>(pair->prop);
-                    break;
-                }
-                case LottieProperty::Type::Color: {
-                    static_cast<LottieSolid*>(pair->obj)->color.release();
-                    static_cast<LottieSolid*>(pair->obj)->color = *static_cast<LottieColor*>(pair->prop);
-                    break;
-                }
-                case LottieProperty::Type::TextDoc: {
-                    static_cast<LottieText*>(pair->obj)->doc.release();
-                    static_cast<LottieText*>(pair->obj)->doc = *static_cast<LottieTextDoc*>(pair->prop);
-                    break;
-                }
-                default: break;
-            }
-            delete(pair->prop);
-            pair->prop = nullptr;
-        }
-        overriden = false;
-    }
+    void assign(LottieObject* target);
+    void reset();
 
     LottieSlot(char* sid, LottieObject* obj, LottieProperty::Type type) : sid(sid), type(type)
     {
@@ -779,16 +640,7 @@ struct LottieComposition
         return endFrame - startFrame;
     }
 
-    LottieLayer* layer(const char* name)
-    {
-        for (auto child = root->children.begin(); child < root->children.end(); ++child) {
-            auto layer = static_cast<LottieLayer*>(*child);
-            if (layer->name && !strcmp(layer->name, name)) return layer;
-        }
-        return nullptr;
-    }
-
-    LottieLayer* layer(int16_t id)
+    LottieLayer* layerById(unsigned long id)
     {
         for (auto child = root->children.begin(); child < root->children.end(); ++child) {
             auto layer = static_cast<LottieLayer*>(*child);
@@ -797,11 +649,20 @@ struct LottieComposition
         return nullptr;
     }
 
-    LottieLayer* asset(const char* name)
+    LottieLayer* layerByIdx(int16_t idx)
+    {
+        for (auto child = root->children.begin(); child < root->children.end(); ++child) {
+            auto layer = static_cast<LottieLayer*>(*child);
+            if (layer->idx == idx) return layer;
+        }
+        return nullptr;
+    }
+
+    LottieLayer* asset(unsigned long id)
     {
         for (auto asset = assets.begin(); asset < assets.end(); ++asset) {
             auto layer = static_cast<LottieLayer*>(*asset);
-            if (layer->name && !strcmp(layer->name, name)) return layer;
+            if (layer->id == id) return layer;
         }
         return nullptr;
     }

@@ -39,9 +39,9 @@ public:
         Initializer::term(CanvasEngine::Sw);
     }
 
-    static unique_ptr<TvgLottieAnimation> create()
+    static TvgLottieAnimation* create()
     {
-        return unique_ptr<TvgLottieAnimation>(new TvgLottieAnimation());
+        return new TvgLottieAnimation;
     }
 
     string error()
@@ -55,22 +55,22 @@ public:
         return val(typed_memory_view(2, psize));
     }
 
-    val duration()
+    float duration()
     {
-        if (!canvas || !animation) return val(0);
-        return val(animation->duration());
+        if (!canvas || !animation) return 0;
+        return animation->duration();
     }
 
-    val totalFrame()
+    float totalFrame()
     {
-        if (!canvas || !animation) return val(0);
-        return val(animation->totalFrame());
+        if (!canvas || !animation) return 0;
+        return animation->totalFrame();
     }
 
-    val curFrame()
+    float curFrame()
     {
-        if (!canvas || !animation) return val(0);
-        return val(animation->curFrame());
+        if (!canvas || !animation) return 0;
+        return animation->curFrame();
     }
 
     // Render methods
@@ -160,6 +160,17 @@ public:
         if (animation->frame(no) == Result::Success) {
             updated = true;
         }
+        return true;
+    }
+
+    bool viewport(float x, float y, float width, float height)
+    {
+        if (!canvas || !animation) return false;
+        if (canvas->viewport(x, y, width, height) != Result::Success) {
+            errorMsg = "viewport() fail";
+            return false;
+        }
+
         return true;
     }
 
@@ -337,6 +348,7 @@ EMSCRIPTEN_BINDINGS(thorvg_bindings)
         .function("load", &TvgLottieAnimation ::load)
         .function("update", &TvgLottieAnimation ::update)
         .function("frame", &TvgLottieAnimation ::frame)
+        .function("viewport", &TvgLottieAnimation ::viewport)
         .function("resize", &TvgLottieAnimation ::resize)
         .function("save", &TvgLottieAnimation ::save);
 }

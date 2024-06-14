@@ -111,6 +111,13 @@ TVG_API Tvg_Result tvg_canvas_update(Tvg_Canvas* canvas)
 }
 
 
+TVG_API Tvg_Result tvg_canvas_est_viewport(Tvg_Canvas* canvas, int32_t x, int32_t y, int32_t w, int32_t h)
+{
+    if (!canvas) return TVG_RESULT_INVALID_ARGUMENT;
+    return (Tvg_Result) reinterpret_cast<Canvas*>(canvas)->viewport(x, y, w, h);
+}
+
+
 TVG_API Tvg_Result tvg_canvas_update_paint(Tvg_Canvas* canvas, Tvg_Paint* paint)
 {
     if (!canvas || !paint) return TVG_RESULT_INVALID_ARGUMENT;
@@ -129,6 +136,13 @@ TVG_API Tvg_Result tvg_canvas_sync(Tvg_Canvas* canvas)
 {
     if (!canvas) return TVG_RESULT_INVALID_ARGUMENT;
     return (Tvg_Result) reinterpret_cast<Canvas*>(canvas)->sync();
+}
+
+
+TVG_API Tvg_Result tvg_canvas_set_viewport(Tvg_Canvas* canvas, int32_t x, int32_t y, int32_t w, int32_t h)
+{
+    if (!canvas) return TVG_RESULT_INVALID_ARGUMENT;
+    return (Tvg_Result) reinterpret_cast<Canvas*>(canvas)->viewport(x, y, w, h);
 }
 
 
@@ -433,7 +447,6 @@ TVG_API Tvg_Result tvg_shape_get_stroke_join(const Tvg_Paint* paint, Tvg_Stroke_
 
 TVG_API Tvg_Result tvg_shape_set_stroke_miterlimit(Tvg_Paint* paint, float ml)
 {
-    if (ml < 0.0f) return TVG_RESULT_NOT_SUPPORTED;
     if (!paint) return TVG_RESULT_INVALID_ARGUMENT;
     return (Tvg_Result) reinterpret_cast<Shape*>(paint)->strokeMiterlimit(ml);
 }
