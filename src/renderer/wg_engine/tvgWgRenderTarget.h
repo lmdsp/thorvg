@@ -36,28 +36,37 @@ public:
     WGPUTexture texStencil{};
     WGPUTextureView texViewColor{};
     WGPUTextureView texViewStencil{};
-    WgBindGroupTextureStorage bindGroupTexStorage;
+    WgBindGroupTextureStorageRgba bindGroupTexStorageRgba;
+    WgBindGroupTextureStorageBgra bindGroupTexStorageBgra;
     uint32_t width{};
     uint32_t height{};
     uint32_t workgroupsCountX{};
     uint32_t workgroupsCountY{};
 public:
-    void initialize(WgContext& context, uint32_t w, uint32_t h, uint32_t samples = 1);
+    void initialize(WgContext& context, uint32_t w, uint32_t h, uint32_t samples = 1, WGPUTextureFormat format = WGPUTextureFormat_RGBA8Unorm);
     void release(WgContext& context);
 
     void beginRenderPass(WGPUCommandEncoder commandEncoder, bool clear);
     void endRenderPass();
 
-    void renderShape(WgRenderDataShape* renderData, WgPipelineBlendType blendType);
-    void renderPicture(WgRenderDataPicture* renderData, WgPipelineBlendType blendType);
+    void renderShape(WgContext& context, WgRenderDataShape* renderData, WgPipelineBlendType blendType);
+    void renderPicture(WgContext& context, WgRenderDataPicture* renderData, WgPipelineBlendType blendType);
 
     void clear(WGPUCommandEncoder commandEncoder);
     void blend(WGPUCommandEncoder commandEncoder, WgRenderStorage* targetSrc, WgBindGroupBlendMethod* blendMethod);
     void compose(WGPUCommandEncoder commandEncoder, WgRenderStorage* targetMsk, WgBindGroupCompositeMethod* composeMethod, WgBindGroupOpacity* opacity);
+    void composeBlend(
+        WgContext& context,
+        WGPUCommandEncoder commandEncoder,
+        WgRenderStorage* texMsk,
+        WgRenderStorage* texSrc,
+        WgBindGroupCompositeMethod* composeMethod,
+        WgBindGroupBlendMethod* blendMethod,
+        WgBindGroupOpacity* opacity);
     void antialias(WGPUCommandEncoder commandEncoder, WgRenderStorage* targetSrc);
 private:
-    void drawShape(WgRenderDataShape* renderData, WgPipelineBlendType blendType);
-    void drawStroke(WgRenderDataShape* renderData, WgPipelineBlendType blendType);
+    void drawShape(WgContext& context, WgRenderDataShape* renderData, WgPipelineBlendType blendType);
+    void drawStroke(WgContext& context, WgRenderDataShape* renderData, WgPipelineBlendType blendType);
 
     void dispatchWorkgroups(WGPUComputePassEncoder computePassEncoder);
 
@@ -71,7 +80,7 @@ private:
    Array<WgRenderStorage*> mList;
    Array<WgRenderStorage*> mPool;
 public:
-   WgRenderStorage* allocate(WgContext& context, uint32_t w, uint32_t h);
+   WgRenderStorage* allocate(WgContext& context, uint32_t w, uint32_t h, uint32_t samples = 1);
    void free(WgContext& context, WgRenderStorage* renderTarget);
    void release(WgContext& context);
 };

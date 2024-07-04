@@ -30,10 +30,13 @@ struct WgMeshData {
     size_t vertexCount{};
     size_t indexCount{};
 
-    void draw(WGPURenderPassEncoder renderPassEncoder);
-    void drawImage(WGPURenderPassEncoder renderPassEncoder);
+    void draw(WgContext& context, WGPURenderPassEncoder renderPassEncoder);
+    void drawFan(WgContext& context, WGPURenderPassEncoder renderPassEncoder);
+    void drawImage(WgContext& context, WGPURenderPassEncoder renderPassEncoder);
 
-    void update(WgContext& context, WgGeometryData* geometryData);
+    void update(WgContext& context, const WgPolyline* polyline);
+    void update(WgContext& context, const WgGeometryData* geometryData);
+    void update(WgContext& context, const WgPoint pmin, const WgPoint pmax);
     void release(WgContext& context);
 };
 
@@ -48,11 +51,13 @@ public:
 };
 
 struct WgMeshDataGroup {
-    static WgMeshDataPool* MeshDataPool;
+    static WgMeshDataPool* gMeshDataPool;
 
     Array<WgMeshData*> meshes{};
-
-    void update(WgContext& context, WgGeometryDataGroup* geometryDataGroup);
+    
+    void append(WgContext& context, const WgPolyline* polyline);
+    void append(WgContext& context, const WgGeometryData* geometryData);
+    void append(WgContext& context, const WgPoint pmin, const WgPoint pmax);
     void release(WgContext& context);
 };
 
@@ -72,6 +77,7 @@ struct WgRenderSettings
     WgBindGroupLinearGradient bindGroupLinear{};
     WgBindGroupRadialGradient bindGroupRadial{};
     WgRenderSettingsType fillType{};
+    bool skip{};
 
     void update(WgContext& context, const Fill* fill, const uint8_t* color, const RenderUpdateFlag flags);
     void release(WgContext& context);
@@ -80,6 +86,7 @@ struct WgRenderSettings
 struct WgRenderDataPaint
 {
     WgBindGroupPaint bindGroupPaint{};
+    float opacity{};
 
     virtual ~WgRenderDataPaint() {};
     virtual void release(WgContext& context);
@@ -91,12 +98,18 @@ struct WgRenderDataShape: public WgRenderDataPaint
     WgRenderSettings renderSettingsShape{};
     WgRenderSettings renderSettingsStroke{};
     WgMeshDataGroup meshGroupShapes{};
+    WgMeshDataGroup meshGroupShapesBBox{};
+    WgMeshData meshDataBBox{};
     WgMeshDataGroup meshGroupStrokes{};
-    WgMeshData meshBBoxShapes{};
-    WgMeshData meshBBoxStrokes{};
+    WgMeshDataGroup meshGroupStrokesBBox{};
+    WgPoint pMin{};
+    WgPoint pMax{};
     bool strokeFirst{};
+    FillRule fillRule{};
 
-    void updateMeshes(WgContext& context, const RenderShape& rshape);
+    void updateBBox(WgPoint pmin, WgPoint pmax);
+    void updateMeshes(WgContext& context, const RenderShape& rshape, const RenderTransform* rt);
+    void updateMeshes(WgContext& context, const WgPolyline* polyline, const RenderStroke* rstroke);
     void releaseMeshes(WgContext& context);
     void release(WgContext& context) override;
     uint32_t identifier() override { return TVG_CLASS_ID_SHAPE; };

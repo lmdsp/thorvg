@@ -31,6 +31,10 @@
 #define WG_VERTEX_BUFFER_MIN_SIZE 2048
 #define WG_INDEX_BUFFER_MIN_SIZE 2048
 
+struct WgCompositor: public Compositor {
+    BlendMethod blendMethod;
+};
+
 enum class WgPipelineBlendType {
     Src = 0, // S
     Normal,  // (Sa * S) + (255 - Sa) * D
@@ -44,6 +48,7 @@ struct WgPipelines;
 
 struct WgContext {
     WGPUInstance instance{};
+    WGPUSurface surface{};
     WGPUAdapter adapter{};
     WGPUDevice device{};
     WGPUQueue queue{};
@@ -54,10 +59,11 @@ struct WgContext {
 
     WGPUSampler samplerNearest{};
     WGPUSampler samplerLinear{};
+    WGPUBuffer indexBufferFan{};
 
     WgPipelines* pipelines{}; // external handle (do not release)
     
-    void initialize();
+    void initialize(WGPUInstance instance, WGPUSurface surface);
     void release();
 
     void executeCommandEncoder(WGPUCommandEncoder commandEncoder);
@@ -75,6 +81,7 @@ struct WgContext {
 
     void allocateVertexBuffer(WGPUBuffer& buffer, const void *data, uint64_t size);
     void allocateIndexBuffer(WGPUBuffer& buffer, const void *data, uint64_t size);
+    void allocateIndexBufferFan(uint64_t size);
     void releaseVertexBuffer(WGPUBuffer& buffer);
     void releaseIndexBuffer(WGPUBuffer& buffer);
 };
@@ -93,7 +100,7 @@ struct WgBindGroup
     static WGPUBindGroupLayoutEntry makeBindGroupLayoutEntryBuffer(uint32_t binding);
     static WGPUBindGroupLayoutEntry makeBindGroupLayoutEntrySampler(uint32_t binding);
     static WGPUBindGroupLayoutEntry makeBindGroupLayoutEntryTexture(uint32_t binding);
-    static WGPUBindGroupLayoutEntry makeBindGroupLayoutEntryStorageTexture(uint32_t binding, WGPUStorageTextureAccess access);
+    static WGPUBindGroupLayoutEntry makeBindGroupLayoutEntryStorage(uint32_t binding, WGPUStorageTextureAccess access, WGPUTextureFormat format);
 
     static WGPUBuffer createBuffer(WGPUDevice device, WGPUQueue queue, const void *data, size_t size);
     static WGPUBindGroup createBindGroup(WGPUDevice device, WGPUBindGroupLayout layout, const WGPUBindGroupEntry* bindGroupEntries, uint32_t count);
@@ -110,6 +117,7 @@ protected:
     WGPUPipelineLayout mPipelineLayout{};
     WGPUShaderModule mShaderModule{};
 public:
+    virtual ~WgPipeline() {}
     virtual void initialize(WGPUDevice device) = 0;
     virtual void release();
 
@@ -123,27 +131,29 @@ struct WgRenderPipeline: public WgPipeline
 {
 protected:
     WGPURenderPipeline mRenderPipeline{};
-    void allocate(WGPUDevice device, WgPipelineBlendType blendType,
+    void allocate(WGPUDevice device, WgPipelineBlendType blendType, WGPUColorWriteMask writeMask,
                   WGPUVertexBufferLayout vertexBufferLayouts[], uint32_t attribsCount,
                   WGPUBindGroupLayout bindGroupLayouts[], uint32_t bindGroupsCount,
-                  WGPUCompareFunction stencilCompareFunction, WGPUStencilOperation stencilOperation,
+                  WGPUCompareFunction compareFront, WGPUStencilOperation operationFront,
+                  WGPUCompareFunction compareBack, WGPUStencilOperation operationBack,
                   const char* shaderSource, const char* shaderLabel, const char* pipelineLabel);
 public:
     void release() override;
     void set(WGPURenderPassEncoder renderPassEncoder);
 
     static WGPUBlendState makeBlendState(WgPipelineBlendType blendType);
-    static WGPUColorTargetState makeColorTargetState(const WGPUBlendState* blendState);
+    static WGPUColorTargetState makeColorTargetState(const WGPUBlendState* blendState, const WGPUColorWriteMask writeMask);
     static WGPUVertexBufferLayout makeVertexBufferLayout(const WGPUVertexAttribute* vertexAttributes, uint32_t count, uint64_t stride);
     static WGPUVertexState makeVertexState(WGPUShaderModule shaderModule, const WGPUVertexBufferLayout* buffers, uint32_t count);
     static WGPUPrimitiveState makePrimitiveState();
-    static WGPUDepthStencilState makeDepthStencilState(WGPUCompareFunction compare, WGPUStencilOperation operation);
+    static WGPUDepthStencilState makeDepthStencilState(WGPUCompareFunction compareFront, WGPUStencilOperation operationFront, WGPUCompareFunction compareBack, WGPUStencilOperation operationBack);
     static WGPUMultisampleState makeMultisampleState();
     static WGPUFragmentState makeFragmentState(WGPUShaderModule shaderModule, WGPUColorTargetState* targets, uint32_t size);
 
-    static WGPURenderPipeline createRenderPipeline(WGPUDevice device, WgPipelineBlendType blendType,
+    static WGPURenderPipeline createRenderPipeline(WGPUDevice device, WgPipelineBlendType blendType, WGPUColorWriteMask writeMask,
                                                    WGPUVertexBufferLayout vertexBufferLayouts[], uint32_t attribsCount,
-                                                   WGPUCompareFunction stencilCompareFunction, WGPUStencilOperation stencilOperation,
+                                                   WGPUCompareFunction compareFront, WGPUStencilOperation operationFront,
+                                                   WGPUCompareFunction compareBack, WGPUStencilOperation operationBack,
                                                    WGPUPipelineLayout pipelineLayout, WGPUShaderModule shaderModule,
                                                    const char* pipelineLabel);
     static void destroyRenderPipeline(WGPURenderPipeline& renderPipeline);

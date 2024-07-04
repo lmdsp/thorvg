@@ -29,7 +29,18 @@
 // render pipelines
 //*****************************************************************************
 
-struct WgPipelineFillShape: public WgRenderPipeline
+struct WgPipelineFillShapeWinding: public WgRenderPipeline
+{
+    void initialize(WGPUDevice device) override;
+    void use(WGPURenderPassEncoder encoder, WgBindGroupCanvas& groupCanvas, WgBindGroupPaint& groupPaint)
+    {
+        set(encoder);
+        groupCanvas.set(encoder, 0);
+        groupPaint.set(encoder, 1);
+    }
+};
+
+struct WgPipelineFillShapeEvenOdd: public WgRenderPipeline
 {
     void initialize(WGPUDevice device) override;
     void use(WGPURenderPassEncoder encoder, WgBindGroupCanvas& groupCanvas, WgBindGroupPaint& groupPaint)
@@ -110,7 +121,7 @@ struct WgPipelineImage: public WgRenderPipeline
 struct WgPipelineClear: public WgComputePipeline
 {
     void initialize(WGPUDevice device) override;
-    void use(WGPUComputePassEncoder encoder, WgBindGroupTextureStorage& groupTexDst)
+    void use(WGPUComputePassEncoder encoder, WgBindGroupTextureStorageRgba& groupTexDst)
     {
         set(encoder);
         groupTexDst.set(encoder, 0);
@@ -121,7 +132,7 @@ struct WgPipelineClear: public WgComputePipeline
 struct WgPipelineBlend: public WgComputePipeline
 {
     void initialize(WGPUDevice device) override;
-    void use(WGPUComputePassEncoder encoder, WgBindGroupTextureStorage& groupTexSrc, WgBindGroupTextureStorage& groupTexDst, WgBindGroupBlendMethod& blendMethod)
+    void use(WGPUComputePassEncoder encoder, WgBindGroupTextureStorageRgba& groupTexSrc, WgBindGroupTextureStorageRgba& groupTexDst, WgBindGroupBlendMethod& blendMethod)
     {
         set(encoder);
         groupTexSrc.set(encoder, 0);
@@ -134,7 +145,7 @@ struct WgPipelineBlend: public WgComputePipeline
 struct WgPipelineCompose: public WgComputePipeline
 {
     void initialize(WGPUDevice device) override;
-    void use(WGPUComputePassEncoder encoder, WgBindGroupTextureStorage& groupTexSrc, WgBindGroupTextureStorage& groupTexMsk, WgBindGroupCompositeMethod& groupComposeMethod, WgBindGroupOpacity& groupOpacity)
+    void use(WGPUComputePassEncoder encoder, WgBindGroupTextureStorageRgba& groupTexSrc, WgBindGroupTextureStorageRgba& groupTexMsk, WgBindGroupCompositeMethod& groupComposeMethod, WgBindGroupOpacity& groupOpacity)
     {
         set(encoder);
         groupTexSrc.set(encoder, 0);
@@ -145,10 +156,24 @@ struct WgPipelineCompose: public WgComputePipeline
 };
 
 
+struct WgPipelineComposeBlend: public WgComputePipeline
+{
+    void initialize(WGPUDevice device) override;
+    void use(WGPUComputePassEncoder encoder, WgBindGroupTexComposeBlend& groupTexs, WgBindGroupCompositeMethod& groupComposeMethod, WgBindGroupBlendMethod& groupBlendMethod, WgBindGroupOpacity& groupOpacity)
+    {
+        set(encoder);
+        groupTexs.set(encoder, 0);
+        groupComposeMethod.set(encoder, 1);
+        groupBlendMethod.set(encoder, 2);
+        groupOpacity.set(encoder, 3);
+    }
+};
+
+
 struct WgPipelineAntiAliasing: public WgComputePipeline
 {
     void initialize(WGPUDevice device) override;
-    void use(WGPUComputePassEncoder encoder, WgBindGroupTextureStorage& groupTexSrc, WgBindGroupTextureStorage& groupTexDst)
+    void use(WGPUComputePassEncoder encoder, WgBindGroupTextureStorageRgba& groupTexSrc, WgBindGroupTextureStorageBgra& groupTexDst)
     {
         set(encoder);
         groupTexSrc.set(encoder, 0);
@@ -163,7 +188,8 @@ struct WgPipelineAntiAliasing: public WgComputePipeline
 struct WgPipelines
 {
     // render pipelines
-    WgPipelineFillShape fillShape;
+    WgPipelineFillShapeWinding fillShapeWinding;
+    WgPipelineFillShapeEvenOdd fillShapeEvenOdd;
     WgPipelineFillStroke fillStroke;
     // fill pipelines
     WgPipelineSolid solid[6];
@@ -174,6 +200,7 @@ struct WgPipelines
     WgPipelineClear computeClear;
     WgPipelineBlend computeBlend;
     WgPipelineCompose computeCompose;
+    WgPipelineComposeBlend computeComposeBlend;
     WgPipelineAntiAliasing computeAntiAliasing;
 
     void initialize(WgContext& context);

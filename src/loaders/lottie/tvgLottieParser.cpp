@@ -72,6 +72,14 @@ CompositeMethod LottieParser::getMaskMethod(bool inversed)
         case 's': return CompositeMethod::SubtractMask;
         case 'i': return CompositeMethod::IntersectMask;
         case 'f': return CompositeMethod::DifferenceMask;
+        case 'l': {
+            TVGLOG("LOTTIE", "Mask Lighten is not supported");
+            return CompositeMethod::None;
+        }
+        case 'd': {
+            TVGLOG("LOTTIE", "Mask Darken is not supported");
+            return CompositeMethod::None;
+        }
         default: return CompositeMethod::None;
     }
 }
@@ -828,7 +836,7 @@ LottieRepeater* LottieParser::parseRepeater()
         if (parseCommon(repeater, key)) continue;
         else if (KEY_AS("c")) parseProperty<LottieProperty::Type::Float>(repeater->copies);
         else if (KEY_AS("o")) parseProperty<LottieProperty::Type::Float>(repeater->offset);
-        else if (KEY_AS("m")) repeater->inorder = getInt();
+        else if (KEY_AS("m")) repeater->inorder = getInt() == 2;
         else if (KEY_AS("tr"))
         {
             enterObject();

@@ -1638,7 +1638,7 @@ void Tessellator::emitTriangle(detail::Vertex *p1, detail::Vertex *p2, detail::V
 }
 
 
-Stroker::Stroker(Array<float> *points, Array<uint32_t> *indices) : mResGlPoints(points), mResIndices(indices)
+Stroker::Stroker(Array<float> *points, Array<uint32_t> *indices, const Matrix& matrix) : mResGlPoints(points), mResIndices(indices), mMatrix(matrix)
 {
 }
 
@@ -1663,6 +1663,16 @@ void Stroker::stroke(const RenderShape *rshape)
     } else {
         doDashStroke(cmds, cmdCnt, pts, ptsCnt, dash_count, dash_pattern);
     }
+}
+
+RenderRegion Stroker::bounds() const
+{
+    return RenderRegion {
+        static_cast<int32_t>(floor(mLeftTop.x)),
+        static_cast<int32_t>(floor(mLeftTop.y)),
+        static_cast<int32_t>(ceil(mRightBottom.x - floor(mLeftTop.x))),
+        static_cast<int32_t>(ceil(mRightBottom.y - floor(mLeftTop.y))),
+    };
 }
 
 void Stroker::doStroke(const PathCommand *cmds, uint32_t cmd_count, const Point *pts, uint32_t pts_count)
@@ -1702,6 +1712,8 @@ void Stroker::doStroke(const PathCommand *cmds, uint32_t cmd_count, const Point 
                 break;
         }
     }
+
+    strokeCap();
 }
 
 void Stroker::doDashStroke(const PathCommand *cmds, uint32_t cmd_count, const Point *pts, uint32_t pts_count,
@@ -1722,6 +1734,19 @@ void Stroker::doDashStroke(const PathCommand *cmds, uint32_t cmd_count, const Po
 
 void Stroker::strokeCap()
 {
+    if (mStrokeState.firstPt == mStrokeState.prevPt) {
+        return;
+    }
+
+    if (mStrokeCap == StrokeCap::Butt) return;
+    else if (mStrokeCap == StrokeCap::Square) {
+        strokeSquare(mStrokeState.firstPt, GlPoint{-mStrokeState.firstPtDir.x, -mStrokeState.firstPtDir.y});
+        strokeSquare(mStrokeState.prevPt, mStrokeState.prevPtDir);
+    } else if (mStrokeCap == StrokeCap::Round) {
+        strokeRound(mStrokeState.firstPt, GlPoint{-mStrokeState.firstPtDir.x, -mStrokeState.firstPtDir.y});
+        strokeRound(mStrokeState.prevPt, mStrokeState.prevPtDir);
+    }
+
 }
 
 void Stroker::strokeLineTo(const GlPoint &curr)
@@ -1773,6 +1798,16 @@ void Stroker::strokeLineTo(const GlPoint &curr)
         mStrokeState.prevPtDir = dir;
         mStrokeState.prevPt = curr;
     }
+
+    if (ia == 0) {
+        mRightBottom.x = mLeftTop.x = curr.x;
+        mRightBottom.y = mLeftTop.y = curr.y;
+    }
+
+    mLeftTop.x = std::min(mLeftTop.x, min(min(a.x, b.x), min(c.x, d.x)));
+    mLeftTop.y = std::min(mLeftTop.y, min(min(a.y, b.y), min(c.y, d.y)));
+    mRightBottom.x = std::max(mRightBottom.x, max(max(a.x, b.x), max(c.x, d.x)));
+    mRightBottom.y = std::max(mRightBottom.y, max(max(a.y, b.y), max(c.y, d.y)));
 }
 
 void Stroker::strokeCubicTo(const GlPoint &cnt1, const GlPoint &cnt2, const GlPoint &end)
@@ -1783,7 +1818,14 @@ void Stroker::strokeCubicTo(const GlPoint &cnt1, const GlPoint &cnt2, const GlPo
     curve.ctrl2 = Point{cnt2.x, cnt2.y};
     curve.end = Point{end.x, end.y};
 
-    auto count = detail::_bezierCurveCount(curve);
+    Bezier relCurve {curve.start, curve.ctrl1, curve.ctrl2, curve.end};
+    relCurve.start *= mMatrix;
+    relCurve.ctrl1 *= mMatrix;
+    relCurve.ctrl2 *= mMatrix;
+    relCurve.end *= mMatrix;
+
+    auto count = detail::_bezierCurveCount(relCurve);
+
     float step = 1.f / count;
 
     for (int32_t i = 0; i <= count; i++) {
@@ -1861,6 +1903,11 @@ void Stroker::strokeRound(const GlPoint &prev, const GlPoint &curr, const GlPoin
         return;
     }
 
+    mLeftTop.x = std::min(mLeftTop.x, min(center.x, min(prev.x, curr.x)));
+    mLeftTop.y = std::min(mLeftTop.y, min(center.y, min(prev.y, curr.y)));
+    mRightBottom.x = std::max(mRightBottom.x, max(center.x, max(prev.x, curr.x)));
+    mRightBottom.y = std::max(mRightBottom.y, max(center.y, max(prev.y, curr.y)));
+
     // Fixme: just use bezier curve to calculate step count
     auto count = detail::_bezierCurveCount(detail::_bezFromArc(prev, curr, strokeRadius()));
 
@@ -1888,6 +1935,11 @@ void Stroker::strokeRound(const GlPoint &prev, const GlPoint &curr, const GlPoin
         this->mResIndices->push(oi);
 
         pi = oi;
+
+        mLeftTop.x = std::min(mLeftTop.x, out.x);
+        mLeftTop.y = std::min(mLeftTop.y, out.y);
+        mRightBottom.x = std::max(mRightBottom.x, out.x);
+        mRightBottom.y = std::max(mRightBottom.y, out.y);
     }
 }
 
@@ -1923,6 +1975,12 @@ void Stroker::strokeMiter(const GlPoint &prev, const GlPoint &curr, const GlPoin
     this->mResIndices->push(e);
     this->mResIndices->push(cp2);
     this->mResIndices->push(c);
+
+    mLeftTop.x = std::min(mLeftTop.x, join.x);
+    mLeftTop.y = std::min(mLeftTop.y, join.y);
+
+    mRightBottom.x = std::max(mRightBottom.x, join.x);
+    mRightBottom.y = std::max(mRightBottom.y, join.y);
 }
 
 void Stroker::strokeBevel(const GlPoint &prev, const GlPoint &curr, const GlPoint &center)
@@ -1934,6 +1992,47 @@ void Stroker::strokeBevel(const GlPoint &prev, const GlPoint &curr, const GlPoin
     mResIndices->push(a);
     mResIndices->push(b);
     mResIndices->push(c);
+}
+
+void Stroker::strokeSquare(const GlPoint& p, const GlPoint& outDir)
+{
+    GlPoint normal{-outDir.y, outDir.x};
+
+    GlPoint a = p + normal * strokeRadius();
+    GlPoint b = p - normal * strokeRadius();
+    GlPoint c = a + outDir * strokeRadius();
+    GlPoint d = b + outDir * strokeRadius();
+
+
+    auto ai = detail::_pushVertex(mResGlPoints, a.x, a.y);
+    auto bi = detail::_pushVertex(mResGlPoints, b.x, b.y);
+    auto ci = detail::_pushVertex(mResGlPoints, c.x, c.y);
+    auto di = detail::_pushVertex(mResGlPoints, d.x, d.y);
+
+    mResIndices->push(ai);
+    mResIndices->push(bi);
+    mResIndices->push(ci);
+
+    mResIndices->push(ci);
+    mResIndices->push(bi);
+    mResIndices->push(di);
+
+    mLeftTop.x = std::min(mLeftTop.x, min(min(a.x, b.x), min(c.x, d.x)));
+    mLeftTop.y = std::min(mLeftTop.y, min(min(a.y, b.y), min(c.y, d.y)));
+    mRightBottom.x = std::max(mRightBottom.x, max(max(a.x, b.x), max(c.x, d.x)));
+    mRightBottom.y = std::max(mRightBottom.y, max(max(a.y, b.y), max(c.y, d.y)));
+}
+
+void Stroker::strokeRound(const GlPoint& p, const GlPoint& outDir)
+{
+    GlPoint normal{-outDir.y, outDir.x};
+
+    GlPoint a = p + normal * strokeRadius();
+    GlPoint b = p - normal * strokeRadius();
+    GlPoint c = p + outDir * strokeRadius();
+
+    strokeRound(a, c, p);
+    strokeRound(c, b, p);
 }
 
 DashStroke::DashStroke(Array<PathCommand> *cmds, Array<Point> *pts, uint32_t dash_count, const float *dash_pattern)
@@ -2109,7 +2208,7 @@ BWTessellator::BWTessellator(Array<float>* points, Array<uint32_t>* indices): mR
 {
 }
 
-void BWTessellator::tessellate(const RenderShape *rshape)
+void BWTessellator::tessellate(const RenderShape *rshape, const Matrix& matrix)
 {
     auto cmds = rshape->path.cmds.data;
     auto cmdCnt = rshape->path.cmds.count;
@@ -2147,12 +2246,19 @@ void BWTessellator::tessellate(const RenderShape *rshape)
             case PathCommand::CubicTo: {
                 Bezier curve{pts[-1], pts[0], pts[1], pts[2]};
 
-                auto stepCount = detail::_bezierCurveCount(curve);
+                Bezier relCurve {pts[-1], pts[0], pts[1], pts[2]};
+                relCurve.start *= matrix;
+                relCurve.ctrl1 *= matrix;
+                relCurve.ctrl2 *= matrix;
+                relCurve.end *= matrix;
+
+                auto stepCount = detail::_bezierCurveCount(relCurve);
+
                 if (stepCount <= 1) stepCount = 2;
 
                 float step = 1.f / stepCount;
 
-                for (uint32_t s = 1; s < static_cast<uint32_t>(stepCount); s++) {
+                for (uint32_t s = 1; s <= static_cast<uint32_t>(stepCount); s++) {
                     auto pt = bezPointAt(curve, step * s);
                     auto currIndex = pushVertex(pt.x, pt.y);
 
@@ -2174,9 +2280,31 @@ void BWTessellator::tessellate(const RenderShape *rshape)
     }
 }
 
+RenderRegion BWTessellator::bounds() const
+{
+    return RenderRegion {
+        static_cast<int32_t>(floor(mLeftTop.x)),
+        static_cast<int32_t>(floor(mLeftTop.y)),
+        static_cast<int32_t>(ceil(mRightBottom.x - floor(mLeftTop.x))),
+        static_cast<int32_t>(ceil(mRightBottom.y - floor(mLeftTop.y))),
+    };
+}
+
 uint32_t BWTessellator::pushVertex(float x, float y)
 {
-    return detail::_pushVertex(mResPoints, x, y);
+    auto index = detail::_pushVertex(mResPoints, x, y);
+
+    if (index == 0) {
+        mRightBottom.x = mLeftTop.x = x;
+        mRightBottom.y = mLeftTop.y = y;
+    } else {
+        mLeftTop.x = min(mLeftTop.x, x);
+        mLeftTop.y = min(mLeftTop.y, y);
+        mRightBottom.x = max(mRightBottom.x, x);
+        mRightBottom.y = max(mRightBottom.y , y);
+    }
+
+    return index;
 }
 
 void BWTessellator::pushTriangle(uint32_t a, uint32_t b, uint32_t c)

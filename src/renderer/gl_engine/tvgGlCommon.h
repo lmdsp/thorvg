@@ -24,7 +24,20 @@
 #define _TVG_GL_COMMON_H_
 
 #include <assert.h>
-#include <GLES3/gl3.h>
+#if defined (THORVG_GL_TARGET_GLES)
+    #include <GLES3/gl3.h>
+    #define TVG_REQUIRE_GL_MAJOR_VER 3
+    #define TVG_REQUIRE_GL_MINOR_VER 0
+#else
+    #if defined(__APPLE__) || defined(__MACH__)
+        #include <OpenGL/gl3.h>
+    #else
+        #define GL_GLEXT_PROTOTYPES 1
+        #include <GL/gl.h>
+    #endif
+    #define TVG_REQUIRE_GL_MAJOR_VER 3
+    #define TVG_REQUIRE_GL_MINOR_VER 3
+#endif
 #include "tvgCommon.h"
 #include "tvgRender.h"
 
@@ -38,17 +51,6 @@
             assert(0); \
           } \
         } while(0)
-
-#define EGL_CHECK(x) \
-    x; \
-    do { \
-        EGLint eglError = eglGetError(); \
-        if(eglError != EGL_SUCCESS) { \
-            TVGERR("GL_ENGINE", "eglGetError() = %i (0x%.8x)", eglError, eglError); \
-            assert(0); \
-        } \
-    } while(0)
-
 
 enum class GlStencilMode {
     None,
@@ -70,6 +72,7 @@ struct GlShape
   ColorSpace texColorSpace = ColorSpace::ABGR8888;
   RenderUpdateFlag updateFlag = None;
   unique_ptr<GlGeometry> geometry;
+  Array<RenderData> clips;
 };
 
 #define MAX_GRADIENT_STOPS 16
@@ -92,5 +95,11 @@ struct GlRadialGradientBlock
     alignas(16) float stopColors[4 * MAX_GRADIENT_STOPS] = {};
 };
 
+struct GlCompositor : public Compositor
+{
+    RenderRegion bbox = {};
+
+    GlCompositor(const RenderRegion& box) : bbox(box) {}
+};
 
 #endif /* _TVG_GL_COMMON_H_ */

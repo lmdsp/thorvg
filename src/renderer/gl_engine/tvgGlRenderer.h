@@ -47,6 +47,7 @@ public:
         RT_MaskIntersect,
         RT_MaskDifference,
         RT_Stencil,
+        RT_Blit,
 
         RT_None,
     };
@@ -84,23 +85,26 @@ private:
     ~GlRenderer();
 
     void initShaders();
-    void drawPrimitive(GlShape& sdata, uint8_t r, uint8_t g, uint8_t b, uint8_t a, RenderUpdateFlag flag);
-    void drawPrimitive(GlShape& sdata, const Fill* fill, RenderUpdateFlag flag);
+    void drawPrimitive(GlShape& sdata, uint8_t r, uint8_t g, uint8_t b, uint8_t a, RenderUpdateFlag flag, int32_t depth);
+    void drawPrimitive(GlShape& sdata, const Fill* fill, RenderUpdateFlag flag, int32_t depth);
+    void drawClip(Array<RenderData>& clips);
 
     GlRenderPass* currentPass();
 
-    void prepareCmpTask(GlRenderTask* task);
+    void prepareBlitTask(GlBlitTask* task);
+    void prepareCmpTask(GlRenderTask* task, const RenderRegion& vp);
     void endRenderPass(Compositor* cmp);
 
     Surface surface;
     GLint mTargetFboId = 0;
     RenderRegion mViewport;
-    std::unique_ptr<GlStageBuffer> mGpuBuffer;
+    //TODO: remove all unique_ptr / replace the vector with tvg::Array
+    unique_ptr<GlStageBuffer> mGpuBuffer;
     vector<std::unique_ptr<GlProgram>> mPrograms;
     unique_ptr<GlRenderTarget> mRootTarget = {};
     Array<GlRenderTarget*> mComposePool = {};
     vector<GlRenderPass> mRenderPassStack = {};
-    vector<unique_ptr<Compositor>> mComposeStack = {};
+    vector<unique_ptr<GlCompositor>> mComposeStack = {};
 };
 
 #endif /* _TVG_GL_RENDERER_H_ */

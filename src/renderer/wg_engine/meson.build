@@ -19,7 +19,10 @@ source_file = [
     'tvgWgShaderTypes.cpp'
 ]
 
+wgpu_dep = dependency('wgpu_native')
+
 engine_dep += [declare_dependency(
+    dependencies        : wgpu_dep,
     include_directories : include_directories('.'),
     sources : source_file
 )]

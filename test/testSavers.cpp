@@ -47,6 +47,8 @@ TEST_CASE("Save empty shape", "[tvgSavers]")
     REQUIRE(saver->save(std::move(shape), TEST_DIR"/test.tvg") == Result::Unknown);
 }
 
+#ifdef THORVG_SVG_LOADER_SUPPORT
+
 TEST_CASE("Save svg into tvg", "[tvgSavers]")
 {
     REQUIRE(Initializer::init(CanvasEngine::Sw, 0) == Result::Success);
@@ -63,6 +65,8 @@ TEST_CASE("Save svg into tvg", "[tvgSavers]")
 
     REQUIRE(Initializer::term(CanvasEngine::Sw) == Result::Success);
 }
+
+#endif
 
 TEST_CASE("Save scene into tvg", "[tvgSavers]")
 {
@@ -100,7 +104,7 @@ TEST_CASE("Save scene into tvg", "[tvgSavers]")
 #endif
 
 
-#ifdef THORVG_GIF_SAVER_SUPPORT
+#if defined(THORVG_GIF_SAVER_SUPPORT) && defined(THORVG_LOTTIE_LOADER_SUPPORT)
 
 TEST_CASE("Save a lottie into gif", "[tvgSavers]")
 {

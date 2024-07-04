@@ -58,6 +58,7 @@ The task scheduler has been meticulously crafted to conceal complexity, streamli
     - [Build and Install](#build-and-install)
     - [Build with Visual Studio](#build-with-visual-studio)
     - [Install with vcpkg](#install-with-vcpkg)
+    - [Install with Conan](#install-with-conan)
     - [Install with MSYS2](#install-with-msys2)
   - [Quick Start](#quick-start)
   - [SVG](#svg)
@@ -122,10 +123,21 @@ Install the ThorVG package.
 ./vcpkg install thorvg
 ```
 
+### Install with Conan
+You can download and install pre-packaged ThorVG using the [Conan](https://conan.io/) package manager.
+
+Follow the instructions on [this page on how to set up Conan](https://conan.io/downloads).
+
+Install the ThorVG package:
+
+```
+conan install --requires="thorvg/[*]" --build=missing
+```
+
 ### Install with MSYS2
 You can download and install pre-packaged ThorVG using the [MSYS2](https://www.msys2.org/) package manager.
 
-Download and execute the MSYS2 installer on the web page above and follow the steps. When done, just launch one of the terminals in the start menu, according to the architecture and compiler you want (either 32 or 64 bits, with MSVCRT or UCR C library). Then you can install the ThorVG package :
+Download and execute the MSYS2 installer on the web page above and follow the steps. When done, just launch one of the terminals in the start menu, according to the architecture and compiler you want (either 32 or 64 bits, with MSVCRT or UCRT library). Then you can install the ThorVG package :
 
 ```
 pacman -S thorvg
@@ -269,14 +281,7 @@ The result is:
 <br />
 ## Lottie
 
-ThorVG aims to fully support Lottie Animation features. Lottie is a JSON-based vector animation file format that enables seamless distribution of animations on any platform, akin to shipping static assets. These files are compact and compatible with various devices, scaling up or down without pixelation. With Lottie, you can easily create, edit, test, collaborate, and distribute animations in a user-friendly manner. For more information, please visit [LottieFiles](https://www.lottiefiles.com)' website. <br />
-<br />
-Currently, ThorVG supports Lottie animations. Although most features are supported, some advanced properties of Lottie may not be available yet:
-<br />
-
- - Shape Modifiers
- - Layer Effects
- - Expressions
+ThorVG supports the most powerful Lottie Animation [features](https://lottiefiles.com/supported-features). Lottie is a JSON-based vector animation file format that enables seamless distribution of animations on any platform, akin to shipping static assets. These files are compact and compatible with various devices, scaling up or down without pixelation. With Lottie, you can easily create, edit, test, collaborate, and distribute animations in a user-friendly manner. For more information, please visit [LottieFiles](https://www.lottiefiles.com)' website. <br />
 
 The following code snippet demonstrates how to use ThorVG to play a Lottie animation.
 ```cpp
@@ -296,6 +301,8 @@ Let's suppose the progress variable determines the position of the animation, ra
 <p align="center">
   <img width="600" height="auto" src="https://github.com/thorvg/thorvg/blob/main/res/example_lottie.gif">
 </p>
+
+Please check out the [ThorVG Test App](https://thorvg-perf-test.vercel.app/) to see the performance of various Lottie animations powered by ThorVG.
 
 [Back to contents](#contents)
 <br />
@@ -358,17 +365,17 @@ ThorVG has been integrated into the [Tizen](https://www.tizen.org) platform as t
 <br />
 <br />
 ## Examples
-here are plenty of sample code in `thorvg/src/examples` to help you in understanding the ThorVG APIs.
+There are plenty of sample code in `thorvg/examples` to help you in understanding the ThorVG APIs.
 
 To execute these examples, you can build them with the following meson build option:
 ```
 meson setup builddir -Dexamples=true
 ```
-Note that these examples require the EFL dev package for launching. If you're using Linux-based OS, you can easily install this package from your OS distribution server. For Ubuntu, you can install it with this command.
+Note that these examples require the SDL dev package for launching. If you're using Linux-based OS, you can easily install this package from your OS distribution server. For Ubuntu, you can install it with this command.
 ```
-apt-get install libefl-all-dev
+apt-get install libsdl2-dev
 ```
-Alternatively, you can download the package [here](https://download.enlightenment.org/rel/win/efl/) for Windows. For more information, please visit the official [EFL page](https://enlightenment.org/).
+Alternatively, you can read the official guidance [here](https://wiki.libsdl.org/SDL2/Installation) for other platforms. Fore more information, please visit the official [SDL](https://www.libsdl.org/) site.
 
 [Back to contents](#contents)
 <br />
@@ -487,11 +494,12 @@ meson setup builddir -Dbindings="capi"
 ## Dependencies
 ThorVG offers versatile support for image loading, accommodating both static and external loaders. This flexibility ensures that, even in environments without external libraries, users can still leverage static loaders as a reliable alternative. At its foundation, the ThorVG core library is engineered to function autonomously, free from external dependencies. However, it is important to note that ThorVG also encompasses a range of optional feature extensions, each with its specific set of dependencies. The dependencies associated with these selective features are outlined as follows:
 
-* GL renderer: [EGL](https://www.khronos.org/egl), [GLESv2](https://www.khronos.org/opengles/)
+* GL engine: [OpenGL v3.3](https://www.khronos.org/opengl/) or [GLES v3.0](https://www.khronos.org/opengles/)
+* WG engine: [webgpu-native](https://github.com/gfx-rs/wgpu-native)
 * External PNG support: [libpng](https://github.com/glennrp/libpng)
 * External JPG support: [turbojpeg](https://github.com/libjpeg-turbo/libjpeg-turbo)
 * External WebP support: [libwebp](https://developers.google.com/speed/webp/download)
-* Examples: [EFL](https://www.enlightenment.org/about-efl.md)
+* Examples: [SDL2](https://www.libsdl.org/)
 
 [Back to contents](#contents)
 <br />

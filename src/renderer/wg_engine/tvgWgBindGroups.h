@@ -119,7 +119,19 @@ struct WgBindGroupTexture : public WgBindGroup
 };
 
 // @group(0 or 1)
-struct WgBindGroupTextureStorage : public WgBindGroup
+struct WgBindGroupTextureStorageRgba : public WgBindGroup
+{
+    static WGPUBindGroupLayout layout;
+    static WGPUBindGroupLayout getLayout(WGPUDevice device);
+    static void releaseLayout();
+
+    void initialize(WGPUDevice device, WGPUQueue queue,
+                    WGPUTextureView uTexture);
+    void release();
+};
+
+// @group(0 or 1)
+struct WgBindGroupTextureStorageBgra : public WgBindGroup
 {
     static WGPUBindGroupLayout layout;
     static WGPUBindGroupLayout getLayout(WGPUDevice device);
@@ -142,6 +154,21 @@ struct WgBindGroupTextureSampled : public WgBindGroup
                     WGPUTextureView uTexture);
     void release();
 };
+
+// @group(0)
+struct WgBindGroupTexComposeBlend : public WgBindGroup
+{
+    static WGPUBindGroupLayout layout;
+    static WGPUBindGroupLayout getLayout(WGPUDevice device);
+    static void releaseLayout();
+
+    void initialize(WGPUDevice device, WGPUQueue queue,
+                    WGPUTextureView uTexSrc,
+                    WGPUTextureView uTexMsk,
+                    WGPUTextureView uTexDst);
+    void release();
+};
+
 
 // @group(1 or 2)
 struct WgBindGroupOpacity : public WgBindGroup

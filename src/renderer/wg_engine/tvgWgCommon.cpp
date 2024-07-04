@@ -27,18 +27,19 @@
 // context
 //*****************************************************************************
 
-void WgContext::initialize()
+void WgContext::initialize(WGPUInstance instance, WGPUSurface surface)
 {
-    // create instance
-    WGPUInstanceDescriptor instanceDesc{};
-    instanceDesc.nextInChain = nullptr;
-    instance = wgpuCreateInstance(&instanceDesc);
     assert(instance);
+    assert(surface);
+    
+    // store global instance and surface
+    this->instance = instance;
+    this->surface = surface;
 
     // request adapter options
     WGPURequestAdapterOptions requestAdapterOptions{};
     requestAdapterOptions.nextInChain = nullptr;
-    requestAdapterOptions.compatibleSurface = nullptr;
+    requestAdapterOptions.compatibleSurface = surface;
     requestAdapterOptions.powerPreference = WGPUPowerPreference_HighPerformance;
     requestAdapterOptions.forceFallbackAdapter = false;
     // on adapter request ended function
@@ -94,19 +95,34 @@ void WgContext::initialize()
     assert(samplerNearest);
     samplerLinear = createSampler(WGPUFilterMode_Linear, WGPUMipmapFilterMode_Linear);
     assert(samplerLinear);
+    allocateIndexBufferFan(1024);
+    assert(indexBufferFan);
 }
 
 
 void WgContext::release()
 {
+    releaseBuffer(indexBufferFan);
     releaseSampler(samplerNearest);
     releaseSampler(samplerLinear);
     if (device) {
         wgpuDeviceDestroy(device);
         wgpuDeviceRelease(device);
+        device =  nullptr;
     }
-    if (adapter) wgpuAdapterRelease(adapter);
-    if (instance) wgpuInstanceRelease(instance);
+    if (adapter) {
+        wgpuAdapterRelease(adapter);
+        adapter = nullptr;
+    }
+    if (surface) {
+        wgpuSurfaceUnconfigure(surface);
+        wgpuSurfaceRelease(surface);
+        surface = nullptr;
+    }
+    if (instance) {
+        wgpuInstanceRelease(instance);
+        instance = nullptr;
+    }
 }
 
 
@@ -160,7 +176,6 @@ WGPUTexture WgContext::createTexture2d(WGPUTextureUsageFlags usage, WGPUTextureF
 
 WGPUTexture WgContext::createTexture2dMS(WGPUTextureUsageFlags usage, WGPUTextureFormat format, uint32_t width, uint32_t height, uint32_t sc, char const * label)
 {
-
     WGPUTextureDescriptor textureDesc{};
     textureDesc.nextInChain = nullptr;
     textureDesc.label = label;
@@ -281,6 +296,30 @@ void WgContext::allocateIndexBuffer(WGPUBuffer& buffer, const void *data, uint64
 }
 
 
+void WgContext::allocateIndexBufferFan(uint64_t vertsCount)
+{
+    assert(vertsCount >= 3);
+    uint64_t indexCount = (vertsCount - 2) * 3;
+    if ((!indexBufferFan) || (wgpuBufferGetSize(indexBufferFan) < indexCount * sizeof(uint32_t))) {
+        Array<uint32_t> indexes(indexCount);
+        for (size_t i = 0; i < vertsCount - 2; i++) {
+            indexes.push(0);
+            indexes.push(i + 1);
+            indexes.push(i + 2);
+        }
+        releaseBuffer(indexBufferFan);
+        WGPUBufferDescriptor bufferDesc{};
+        bufferDesc.nextInChain = nullptr;
+        bufferDesc.label = "The index buffer";
+        bufferDesc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Index;
+        bufferDesc.size = indexCount * sizeof(uint32_t);
+        bufferDesc.mappedAtCreation = false;
+        indexBufferFan = wgpuDeviceCreateBuffer(device, &bufferDesc);
+        wgpuQueueWriteBuffer(queue, indexBufferFan, 0, &indexes[0], indexCount * sizeof(uint32_t));
+    }
+}
+
+
 void WgContext::releaseVertexBuffer(WGPUBuffer& buffer)
 {
     releaseBuffer(buffer);
@@ -291,7 +330,6 @@ void WgContext::releaseIndexBuffer(WGPUBuffer& buffer)
 {
     releaseBuffer(buffer);
 }
-
 
 //*****************************************************************************
 // bind group
@@ -391,7 +429,7 @@ WGPUBindGroupLayoutEntry WgBindGroup::makeBindGroupLayoutEntryTexture(uint32_t b
 }
 
 
-WGPUBindGroupLayoutEntry WgBindGroup::makeBindGroupLayoutEntryStorageTexture(uint32_t binding, WGPUStorageTextureAccess access)
+WGPUBindGroupLayoutEntry WgBindGroup::makeBindGroupLayoutEntryStorage(uint32_t binding, WGPUStorageTextureAccess access, WGPUTextureFormat format)
 {
     WGPUBindGroupLayoutEntry bindGroupLayoutEntry{};
     bindGroupLayoutEntry.nextInChain = nullptr;
@@ -399,7 +437,7 @@ WGPUBindGroupLayoutEntry WgBindGroup::makeBindGroupLayoutEntryStorageTexture(uin
     bindGroupLayoutEntry.visibility = WGPUShaderStage_Fragment | WGPUShaderStage_Compute;
     bindGroupLayoutEntry.storageTexture.nextInChain = nullptr;
     bindGroupLayoutEntry.storageTexture.access = access;
-    bindGroupLayoutEntry.storageTexture.format = WGPUTextureFormat_RGBA8Unorm;
+    bindGroupLayoutEntry.storageTexture.format = format;
     bindGroupLayoutEntry.storageTexture.viewDimension = WGPUTextureViewDimension_2D;
     return bindGroupLayoutEntry;
 }
@@ -520,10 +558,11 @@ void WgPipeline::destroyShaderModule(WGPUShaderModule& shaderModule)
 // render pipeline
 //*****************************************************************************
 
-void WgRenderPipeline::allocate(WGPUDevice device, WgPipelineBlendType blendType,
+void WgRenderPipeline::allocate(WGPUDevice device, WgPipelineBlendType blendType, WGPUColorWriteMask writeMask,
                                 WGPUVertexBufferLayout vertexBufferLayouts[], uint32_t attribsCount,
                                 WGPUBindGroupLayout bindGroupLayouts[], uint32_t bindGroupsCount,
-                                WGPUCompareFunction stencilCompareFunction, WGPUStencilOperation stencilOperation,
+                                WGPUCompareFunction compareFront, WGPUStencilOperation operationFront,
+                                WGPUCompareFunction compareBack, WGPUStencilOperation operationBack,
                                 const char* shaderSource, const char* shaderLabel, const char* pipelineLabel)
 {
     mShaderModule = createShaderModule(device, shaderSource, shaderLabel);
@@ -532,9 +571,10 @@ void WgRenderPipeline::allocate(WGPUDevice device, WgPipelineBlendType blendType
     mPipelineLayout = createPipelineLayout(device, bindGroupLayouts, bindGroupsCount);
     assert(mPipelineLayout);
 
-    mRenderPipeline = createRenderPipeline(device, blendType,
+    mRenderPipeline = createRenderPipeline(device, blendType, writeMask,
                                            vertexBufferLayouts, attribsCount,
-                                           stencilCompareFunction, stencilOperation,
+                                           compareFront, operationFront,
+                                           compareBack, operationBack,
                                            mPipelineLayout, mShaderModule, pipelineLabel);
     assert(mRenderPipeline);
 }
@@ -594,14 +634,13 @@ WGPUBlendState WgRenderPipeline::makeBlendState(WgPipelineBlendType blendType)
 }
 
 
-WGPUColorTargetState WgRenderPipeline::makeColorTargetState(const WGPUBlendState* blendState)
+WGPUColorTargetState WgRenderPipeline::makeColorTargetState(const WGPUBlendState* blendState, const WGPUColorWriteMask writeMask)
 {
     WGPUColorTargetState colorTargetState{};
     colorTargetState.nextInChain = nullptr;
-    //colorTargetState.format = WGPUTextureFormat_BGRA8Unorm; // (WGPUTextureFormat_BGRA8UnormSrgb)
-    colorTargetState.format = WGPUTextureFormat_RGBA8Unorm; // (WGPUTextureFormat_BGRA8UnormSrgb)
+    colorTargetState.format = WGPUTextureFormat_RGBA8Unorm;
     colorTargetState.blend = blendState;
-    colorTargetState.writeMask = WGPUColorWriteMask_All;
+    colorTargetState.writeMask = writeMask;
     return colorTargetState;
 }
 
@@ -643,21 +682,21 @@ WGPUPrimitiveState WgRenderPipeline::makePrimitiveState()
 }
 
 
-WGPUDepthStencilState WgRenderPipeline::makeDepthStencilState(WGPUCompareFunction compare, WGPUStencilOperation operation)
+WGPUDepthStencilState WgRenderPipeline::makeDepthStencilState(WGPUCompareFunction compareFront, WGPUStencilOperation operationFront, WGPUCompareFunction compareBack, WGPUStencilOperation operationBack)
 {
     WGPUDepthStencilState depthStencilState{};
     depthStencilState.nextInChain = nullptr;
     depthStencilState.format = WGPUTextureFormat_Stencil8;
     depthStencilState.depthWriteEnabled = false;
     depthStencilState.depthCompare = WGPUCompareFunction_Always;
-    depthStencilState.stencilFront.compare = compare;
-    depthStencilState.stencilFront.failOp = operation;
-    depthStencilState.stencilFront.depthFailOp = operation;
-    depthStencilState.stencilFront.passOp = operation;
-    depthStencilState.stencilBack.compare = compare;
-    depthStencilState.stencilBack.failOp = operation;
-    depthStencilState.stencilBack.depthFailOp = operation;
-    depthStencilState.stencilBack.passOp = operation;
+    depthStencilState.stencilFront.compare = compareFront;
+    depthStencilState.stencilFront.failOp = operationFront;
+    depthStencilState.stencilFront.depthFailOp = operationFront;
+    depthStencilState.stencilFront.passOp = operationFront;
+    depthStencilState.stencilBack.compare = compareBack;
+    depthStencilState.stencilBack.failOp = operationBack;
+    depthStencilState.stencilBack.depthFailOp = operationBack;
+    depthStencilState.stencilBack.passOp = operationBack;
     depthStencilState.stencilReadMask = 0xFFFFFFFF;
     depthStencilState.stencilWriteMask = 0xFFFFFFFF;
     depthStencilState.depthBias = 0;
@@ -692,20 +731,21 @@ WGPUFragmentState WgRenderPipeline::makeFragmentState(WGPUShaderModule shaderMod
 }
 
 
-WGPURenderPipeline WgRenderPipeline::createRenderPipeline(WGPUDevice device, WgPipelineBlendType blendType,
+WGPURenderPipeline WgRenderPipeline::createRenderPipeline(WGPUDevice device, WgPipelineBlendType blendType, WGPUColorWriteMask writeMask,
                                                           WGPUVertexBufferLayout vertexBufferLayouts[], uint32_t attribsCount,
-                                                          WGPUCompareFunction stencilCompareFunction, WGPUStencilOperation stencilOperation,
+                                                          WGPUCompareFunction compareFront, WGPUStencilOperation operationFront,
+                                                          WGPUCompareFunction compareBack, WGPUStencilOperation operationBack,
                                                           WGPUPipelineLayout pipelineLayout, WGPUShaderModule shaderModule,
                                                           const char* pipelineName)
 {
     WGPUBlendState blendState = makeBlendState(blendType);
     WGPUColorTargetState colorTargetStates[] = { 
-        makeColorTargetState(&blendState)
+        makeColorTargetState(&blendState, writeMask)
     };
 
     WGPUVertexState vertexState = makeVertexState(shaderModule, vertexBufferLayouts, attribsCount);
     WGPUPrimitiveState primitiveState = makePrimitiveState();
-    WGPUDepthStencilState depthStencilState = makeDepthStencilState(stencilCompareFunction, stencilOperation);
+    WGPUDepthStencilState depthStencilState = makeDepthStencilState(compareFront, operationFront, compareBack, operationBack);
     WGPUMultisampleState multisampleState = makeMultisampleState();
     WGPUFragmentState fragmentState = makeFragmentState(shaderModule, colorTargetStates, 1);
 

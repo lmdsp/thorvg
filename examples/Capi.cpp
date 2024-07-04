@@ -20,29 +20,23 @@
  * SOFTWARE.
  */
 
-#include <Elementary.h>
 #include <thorvg_capi.h>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_syswm.h>
+#include <stdio.h>
 
 #define WIDTH 800
 #define HEIGHT 800
-
 
 /************************************************************************/
 /* Capi Test Code                                                       */
 /************************************************************************/
 
-static uint32_t* buffer = NULL;
 static Tvg_Canvas* canvas = NULL;
 static Tvg_Animation* animation = NULL;
-static Eo* view = NULL;
-static Elm_Transit *transit = NULL;
 
-void testCapi()
+void contents()
 {
-    canvas = tvg_swcanvas_create();
-    tvg_swcanvas_set_target(canvas, buffer, WIDTH, WIDTH, HEIGHT, TVG_COLORSPACE_ARGB8888);
-    tvg_swcanvas_set_mempool(canvas, TVG_MEMPOOL_POLICY_DEFAULT);
-
 //////1. Linear gradient shape with a linear gradient stroke
     //Set a shape
     Tvg_Paint* shape1 = tvg_shape_new();
@@ -154,6 +148,11 @@ void testCapi()
     tvg_shape_append_arc(scene_shape1, 175.0f, 600.0f, 150.0f, -45.0f, 90.0f, 1);
     tvg_shape_append_arc(scene_shape1, 175.0f, 600.0f, 150.0f, 225.0f, -90.0f, 1);
     tvg_shape_set_fill_color(scene_shape1, 0, 0, 255, 150);
+    tvg_shape_set_stroke_color(scene_shape1, 255, 255, 255, 155);
+    tvg_shape_set_stroke_width(scene_shape1, 10.0f);
+    tvg_shape_set_stroke_cap(scene_shape1, Tvg_Stroke_Cap::TVG_STROKE_CAP_ROUND);
+    tvg_shape_set_stroke_join(scene_shape1, Tvg_Stroke_Join::TVG_STROKE_JOIN_ROUND);
+    tvg_shape_set_stroke_trim(scene_shape1, 0.25f, 0.75f, true);
 
     //Set an arc with a dashed stroke
     Tvg_Paint* scene_shape2 = tvg_paint_duplicate(scene_shape1);
@@ -210,121 +209,135 @@ void testCapi()
     } else {
         tvg_paint_scale(pict_lottie, 3.0f);
         tvg_canvas_push(canvas, pict_lottie);
+    }
 
-        float duration;
+//////7. Text
+    //load from a file
+    if (tvg_font_load(EXAMPLE_DIR"/font/SentyCloud.ttf") != TVG_RESULT_SUCCESS) {
+        printf("Problem with loading the font from the file. Did you enable TTF Loader?\n");
+    } else {
+        Tvg_Paint *text = tvg_text_new();
+        tvg_text_set_font(text, "SentyCloud", 25.0f, "");
+        tvg_text_set_fill_color(text, 0, 0, 255);
+        tvg_text_set_text(text, "\xE7\xB4\xA2\xE5\xB0\x94\x56\x47\x20\xE6\x98\xAF\xE6\x9C\x80\xE5\xA5\xBD\xE7\x9A\x84");
+        tvg_paint_translate(text, 50.0f, 380.0f);
+        tvg_canvas_push(canvas, text);
+    }
+    //load from a memory
+    FILE *file = fopen(EXAMPLE_DIR"/font/SentyCloud.ttf", "rb");
+    if (file == NULL) return;
+    fseek(file, 0, SEEK_END);
+    long data_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    char* data = (char*)malloc(data_size);
+    if (!data) return;
+    if (fread(data, 1, data_size, file) != (size_t)data_size) {
+        free(data);
+        fclose(file);
+        return;
+    }
+    if (tvg_font_load_data("Arial", data, data_size, "ttf", true) != TVG_RESULT_SUCCESS) {
+        printf("Problem with loading the font file from a memory. Did you enable TTF Loader?\n");
+    } else {
+        //Radial gradient
+        Tvg_Gradient* grad = tvg_radial_gradient_new();
+        tvg_radial_gradient_set(grad, 200.0f, 200.0f, 20.0f);
+        Tvg_Color_Stop color_stops[2] =
+                {
+                        {0.0f, 255,   0, 255, 255},
+                        {1.0f,   0,   0, 255, 255}
+                };
+        tvg_gradient_set_color_stops(grad, color_stops, 2);
+        tvg_gradient_set_spread(grad, TVG_STROKE_FILL_REFLECT);
+
+        Tvg_Paint *text = tvg_text_new();
+        tvg_text_set_font(text, "Arial", 20.0f, "italic");
+        tvg_text_set_linear_gradient(text, grad);
+        tvg_text_set_text(text, "ThorVG is the best");
+        tvg_paint_translate(text, 70.0f, 420.0f);
+        tvg_canvas_push(canvas, text);
+    }
+    free(data);
+    fclose(file);
+}
+
+
+float progress(uint32_t elapsed, float durationInSec)
+{
+    auto duration = (uint32_t)(durationInSec * 1000.0f); //sec -> millisec.
+    auto clamped = elapsed % duration;
+    return ((float)clamped / (float)duration);
+}
+
+
+/************************************************************************/
+/* Entry Point                                                          */
+/************************************************************************/
+
+int main(int argc, char **argv)
+{
+    tvg_engine_init(Tvg_Engine(TVG_ENGINE_SW), 0);
+
+    SDL_Init(SDL_INIT_VIDEO);
+
+    SDL_Window* window = SDL_CreateWindow("ThorVG Example (Software)", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, WIDTH, HEIGHT, SDL_WINDOW_SHOWN);
+    SDL_Surface* surface = SDL_GetWindowSurface(window);
+
+    //create the canvas
+    canvas = tvg_swcanvas_create();
+    tvg_swcanvas_set_target(canvas, (uint32_t*)surface->pixels, surface->w, surface->pitch / 4, surface->h, TVG_COLORSPACE_ARGB8888);
+    tvg_swcanvas_set_mempool(canvas, TVG_MEMPOOL_POLICY_DEFAULT);
+
+    contents();
+
+    SDL_Event event;
+    auto running = true;
+    auto ptime = SDL_GetTicks();
+    auto elapsed = 0;
+
+    while (running) {
+        //SDL Event handling
+        while (SDL_PollEvent(&event)) {
+            switch (event.type) {
+                case SDL_QUIT: {
+                    running = false;
+                    break;
+                }
+                case SDL_KEYUP: {
+                    if (event.key.keysym.sym == SDLK_ESCAPE) {
+                        running = false;
+                    }
+                    break;
+                }
+            }
+        }
+
+        //Clear the canvas
+        tvg_canvas_clear(canvas, false);
+
+        //Update the animation
+        float duration, totalFrame;
         tvg_animation_get_duration(animation, &duration);
-        elm_transit_duration_set(transit, duration);
-        elm_transit_repeat_times_set(transit, -1);
-        elm_transit_go(transit);
-    }
+        tvg_animation_get_total_frame(animation, &totalFrame);
+        tvg_animation_set_frame(animation, totalFrame * progress(elapsed, duration));
 
-//////Draw the canvas
-    tvg_canvas_draw(canvas);
-    tvg_canvas_sync(canvas);
-}
-
-
-/************************************************************************/
-/* Animation Code                                                       */
-/************************************************************************/
-
-void transitCb(Elm_Transit_Effect *effect, Elm_Transit* transit, double progress)
-{
-    if (!canvas) return;
-
-    float total_frame = 0.0f;
-    tvg_animation_get_total_frame(animation, &total_frame);
-
-    float new_frame = total_frame * progress;
-
-    float cur_frame = 0.0f;
-    tvg_animation_get_frame(animation, &cur_frame);
-
-    //Update animation frame only when it's changed
-    if (tvg_animation_set_frame(animation, new_frame) == TVG_RESULT_SUCCESS) {
-        tvg_canvas_update_paint(canvas, tvg_animation_get_picture(animation));
-    }
-
-    //Draw the canvas
-    tvg_canvas_draw(canvas);
-    tvg_canvas_sync(canvas);
-
-    //Update Efl Canvas
-    Eo* img = (Eo*) effect;
-    evas_object_image_data_update_add(img, 0, 0, WIDTH, HEIGHT);
-    evas_object_image_pixels_dirty_set(img, EINA_TRUE);
-}
-
-
-/************************************************************************/
-/* Main Code                                                            */
-/************************************************************************/
-
-void win_del(void *data, Evas_Object *o, void *ev)
-{
-   elm_exit();
-}
-
-void resize_cb(void *data, Evas *e, Evas_Object *obj, void *event_info)
-{
-    int w = 0, h = 0;
-    evas_object_geometry_get(obj, NULL, NULL, &w, &h);
-
-    if ((w != WIDTH || h != HEIGHT) && (w != 0 && h != 0))
-    {
-        evas_object_image_data_set(view, NULL); //prevent evas scale on invalid buffer by rendering thread
-        buffer = (uint32_t*) realloc(buffer, sizeof(uint32_t) * w * h);
-        tvg_swcanvas_set_target(canvas, buffer, w, w, h, TVG_COLORSPACE_ARGB8888);
-
+        //Draw the canvas
         tvg_canvas_update(canvas);
         tvg_canvas_draw(canvas);
         tvg_canvas_sync(canvas);
 
-        evas_object_image_size_set(view, w, h);
-        evas_object_image_data_set(view, buffer);
-        evas_object_image_pixels_dirty_set(view, EINA_TRUE);
-        evas_object_image_data_update_add(view, 0, 0, w, h);
+        SDL_UpdateWindowSurface(window);
+
+        auto ctime = SDL_GetTicks();
+        elapsed += (ctime - ptime);
+        ptime = ctime;
     }
-}
 
-int main(int argc, char **argv)
-{
-    elm_init(argc, argv);
-    tvg_engine_init(Tvg_Engine(TVG_ENGINE_SW | TVG_ENGINE_GL), 0);
+    SDL_DestroyWindow(window);
 
-    buffer = (uint32_t*)malloc(sizeof(uint32_t) * WIDTH * HEIGHT);
+    SDL_Quit();
 
-    Eo* win = elm_win_util_standard_add(NULL, "ThorVG Test");
-
-    evas_object_smart_callback_add(win, "delete,request", win_del, 0);
-    evas_object_event_callback_add(win, EVAS_CALLBACK_RESIZE, resize_cb, 0);
-
-    view = evas_object_image_filled_add(evas_object_evas_get(win));
-    evas_object_image_size_set(view, WIDTH, HEIGHT);
-    evas_object_image_data_set(view, buffer);
-    evas_object_image_pixels_dirty_set(view, EINA_TRUE);
-    evas_object_image_data_update_add(view, 0, 0, WIDTH, HEIGHT);
-    evas_object_size_hint_weight_set(view, EVAS_HINT_EXPAND, EVAS_HINT_EXPAND);
-    evas_object_show(view);
-
-    elm_win_resize_object_add(win, view);
-    evas_object_geometry_set(win, 0, 0, WIDTH, HEIGHT);
-    evas_object_show(win);
-
-    transit = elm_transit_add();
-
-    testCapi();
-
-    elm_transit_effect_add(transit, transitCb, view, nullptr);
-
-    elm_run();
-    elm_transit_del(transit);
+    tvg_engine_term(Tvg_Engine(TVG_ENGINE_SW));
     
-    tvg_canvas_destroy(canvas);
-    free(buffer);
-    tvg_animation_del(animation);
-    tvg_engine_term(Tvg_Engine(TVG_ENGINE_SW | TVG_ENGINE_GL));
-    elm_shutdown();
-
     return 0;
 }

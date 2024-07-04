@@ -27,7 +27,6 @@
 /* Internal Class Implementation                                        */
 /************************************************************************/
 
-
 /************************************************************************/
 /* External Class Implementation                                        */
 /************************************************************************/
@@ -40,11 +39,6 @@ Animation::~Animation()
 
 Animation::Animation() : pImpl(new Impl)
 {
-}
-
-Animation::Animation(Picture* picture) : pImpl(new Impl(picture))
-{
-
 }
 
 
@@ -126,7 +120,7 @@ Result Animation::segment(float *begin, float *end) noexcept
 }
 
 
-unique_ptr<Animation> Animation::gen(Picture* picture) noexcept
+unique_ptr<Animation> Animation::gen() noexcept
 {
-    return unique_ptr<Animation>(new Animation(picture));
+    return unique_ptr<Animation>(new Animation);
 }

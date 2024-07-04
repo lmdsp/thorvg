@@ -86,8 +86,11 @@ public:
     void addBindResource(const GlBindingResource& binding);
     void setDrawRange(uint32_t offset, uint32_t count);
     void setViewport(const RenderRegion& viewport);
+    void setDrawDepth(int32_t depth) { mDrawDepth = static_cast<float>(depth); }
+    virtual void normalizeDrawDepth(int32_t maxDepth) { mDrawDepth /= static_cast<float>(maxDepth);  }
 
     GlProgram* getProgram() { return mProgram; }
+    const RenderRegion& getViewport() const { return mViewport; }
 private:
     GlProgram* mProgram;
     RenderRegion mViewport = {};
@@ -95,6 +98,7 @@ private:
     uint32_t mIndexCount = {};
     Array<GlVertexLayout> mVertexLayout = {};
     Array<GlBindingResource> mBindingResources = {};
+    float mDrawDepth = 0.f;
 };
 
 class GlStencilCoverTask : public GlRenderTask
@@ -105,6 +109,7 @@ public:
 
     void run() override;
 
+    void normalizeDrawDepth(int32_t maxDepth) override;
 private:
     GlRenderTask* mStencilTask;
     GlRenderTask* mCoverTask;
@@ -128,7 +133,7 @@ protected:
 
     GLuint getResolveFboId();
 
-    virtual void onResolve();
+    void onResolve();
 private:
     GLuint mTargetFbo;
     GlRenderTarget* mFbo;
@@ -141,16 +146,14 @@ public:
     GlBlitTask(GlProgram*, GLuint target, GlRenderTarget* fbo, Array<GlRenderTask*>&& tasks);
     ~GlBlitTask() override = default;
 
-    void setSize(uint32_t width, uint32_t height);
-
     void run() override;
 
-protected:
-    void onResolve() override {}
+    GLuint getColorTextore() const { return mColorTex; }
 
+    void setTargetViewport(const RenderRegion& vp) { mTargetViewport = vp; }
 private:
-    uint32_t mWidth = 0;
-    uint32_t mHeight = 0;
+    GLuint mColorTex = 0;
+    RenderRegion mTargetViewport = {};
 };
 
 class GlDrawBlitTask : public GlComposeTask
@@ -162,5 +165,18 @@ public:
     void run() override;
 };
 
+class GlClipTask : public GlRenderTask
+{
+public:
+    GlClipTask(GlRenderTask* clip, GlRenderTask* mask);
+    ~GlClipTask() override;
+
+    void run() override;
+
+    void normalizeDrawDepth(int32_t maxDepth) override;
+private:
+    GlRenderTask* mClipTask;
+    GlRenderTask* mMaskTask;
+};
 
 #endif /* _TVG_GL_RENDER_TASK_H_ */

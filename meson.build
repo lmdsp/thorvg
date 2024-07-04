@@ -1,7 +1,7 @@
 project('thorvg',
         'cpp',
         default_options : ['buildtype=debugoptimized', 'b_sanitize=none', 'werror=false', 'optimization=s', 'cpp_std=c++14', 'strip=true'],
-        version : '0.13.8',
+        version : '0.14.0',
         license : 'MIT')
 
 config_h = configuration_data()
@@ -19,66 +19,81 @@ if get_option('threads') == true
 endif
 
 #Engines
-if get_option('engines').contains('sw') == true
+all_engines = get_option('engines').contains('all')
+
+sw_engine = false
+if all_engines or get_option('engines').contains('sw')
+    sw_engine = true
     config_h.set10('THORVG_SW_RASTER_SUPPORT', true)
 endif
 
-if get_option('engines').contains('gl_beta') == true
+gl_engine = false
+if all_engines or get_option('engines').contains('gl')
+    gl_engine = true
     config_h.set10('THORVG_GL_RASTER_SUPPORT', true)
 endif
 
-if get_option('engines').contains('wg_beta') == true
+wg_engine = false
+if get_option('engines').contains('wg_beta')
+    wg_engine = true
     config_h.set10('THORVG_WG_RASTER_SUPPORT', true)
 endif
 
+#Tools
+all_tools = get_option('tools').contains('all')
+svg2tvg = all_tools or get_option('tools').contains('svg2tvg')
+lottie2gif = all_tools or get_option('tools').contains('lottie2gif')
+svg2png = all_tools or get_option('tools').contains('svg2png')
+
 #Loaders
-all_loaders = false
+all_loaders = get_option('loaders').contains('all')
+svg_loader = all_loaders or get_option('loaders').contains('svg') or svg2tvg or svg2png
+tvg_loader = all_loaders or get_option('loaders').contains('tvg')
+png_loader = all_loaders or get_option('loaders').contains('png')
+jpg_loader = all_loaders or get_option('loaders').contains('jpg')
+lottie_loader = all_loaders or get_option('loaders').contains('lottie') or lottie2gif
+ttf_loader = all_loaders or get_option('loaders').contains('ttf')
+webp_loader = all_loaders or get_option('loaders').contains('webp')
 
-if get_option('loaders').contains('all') == true
-    all_loaders = true
-endif
+#Savers
+all_savers = get_option('savers').contains('all')
+tvg_saver = all_savers or get_option('savers').contains('tvg') or svg2tvg
+gif_saver = all_savers or get_option('savers').contains('gif') or lottie2gif
 
-if all_loaders or get_option('loaders').contains('svg') == true
+#Loaders/savers/tools config
+if svg_loader
     config_h.set10('THORVG_SVG_LOADER_SUPPORT', true)
 endif
 
-if all_loaders or get_option('loaders').contains('tvg') == true
+if tvg_loader
     config_h.set10('THORVG_TVG_LOADER_SUPPORT', true)
 endif
 
-if all_loaders or get_option('loaders').contains('png') == true
+if png_loader
    config_h.set10('THORVG_PNG_LOADER_SUPPORT', true)
 endif
 
-if all_loaders or get_option('loaders').contains('jpg') == true
+if jpg_loader
     config_h.set10('THORVG_JPG_LOADER_SUPPORT', true)
 endif
 
-if all_loaders or get_option('loaders').contains('lottie') == true
+if lottie_loader
     config_h.set10('THORVG_LOTTIE_LOADER_SUPPORT', true)
 endif
 
-if all_loaders or get_option('loaders').contains('ttf') == true
+if ttf_loader
     config_h.set10('THORVG_TTF_LOADER_SUPPORT', true)
 endif
 
-if all_loaders or get_option('loaders').contains('webp') == true
+if webp_loader
     config_h.set10('THORVG_WEBP_LOADER_SUPPORT', true)
 endif
 
-
-#Savers
-all_savers = false
-
-if get_option('savers').contains('all') == true
-    all_savers = true
-endif
-
-if all_savers or get_option('savers').contains('tvg') == true
+if tvg_saver
     config_h.set10('THORVG_TVG_SAVER_SUPPORT', true)
 endif
 
-if all_savers or get_option('savers').contains('gif') == true
+if gif_saver
     config_h.set10('THORVG_GIF_SAVER_SUPPORT', true)
 endif
 
@@ -112,15 +127,8 @@ if get_option('log') == true
     config_h.set10('THORVG_LOG_ENABLED', true)
 endif
 
-#Tools
-all_tools = false
-
-if get_option('tools').contains('all') == true
-    all_tools = true
-endif
-
 #Extra
-lottie_expressions = (get_option('loaders').contains('all') or get_option('loaders').contains('lottie')) and get_option('extra').contains('lottie_expressions')
+lottie_expressions = lottie_loader and get_option('extra').contains('lottie_expressions')
 
 if lottie_expressions
     config_h.set10('THORVG_LOTTIE_EXPRESSIONS_SUPPORT', true)
@@ -136,8 +144,12 @@ configure_file(
 
 headers = [include_directories('inc'), include_directories('.')]
 
+#OpenGL profile: OpenGLES(true) or OpenGL(false), confirmed by gl_engine
+target_opengles = false
+
 subdir('inc')
 subdir('src')
+subdir('tools')
 
 if get_option('examples') == true
     subdir('examples')
@@ -156,7 +168,7 @@ Summary:
     Multi-Tasking:              @3@
     SIMD Instruction:           @4@
     Raster Engine (SW):         @5@
-    Raster Engine (GL_BETA):    @6@
+    Raster Engine (GL):         @6@
     Raster Engine (WG_BETA):    @7@
     Loader (TVG):               @8@
     Loader (SVG):               @9@
@@ -183,26 +195,26 @@ Summary:
         get_option('prefix'),
         get_option('threads'),
         simd_type,
-        get_option('engines').contains('sw'),
-        get_option('engines').contains('gl_beta'),
-        get_option('engines').contains('wg_beta'),
-        all_loaders or get_option('loaders').contains('tvg'),
-        all_loaders or get_option('loaders').contains('svg'),
-        all_loaders or get_option('loaders').contains('ttf'),
-        all_loaders or get_option('loaders').contains('lottie'),
-        all_loaders or get_option('loaders').contains('png'),
-        all_loaders or get_option('loaders').contains('jpg'),
-        all_loaders or get_option('loaders').contains('webp'),
-        all_savers or get_option('savers').contains('tvg'),
-        all_savers or get_option('savers').contains('gif'),
+        sw_engine,
+        gl_engine,
+        wg_engine,
+        tvg_loader,
+        svg_loader,
+        ttf_loader,
+        lottie_loader,
+        png_loader,
+        jpg_loader,
+        webp_loader,
+        tvg_saver,
+        gif_saver,
         get_option('bindings').contains('capi'),
         get_option('bindings').contains('wasm_beta'),
         get_option('log'),
         get_option('tests'),
         get_option('examples'),
-        all_tools or get_option('tools').contains('svg2tvg'),
-        all_tools or get_option('tools').contains('svg2png'),
-        all_tools or get_option('tools').contains('lottie2gif'),
+        svg2tvg,
+        svg2png,
+        lottie2gif,
         lottie_expressions
     )
 

@@ -7,4 +7,5 @@ doc
 *.tvg
 *.tmp
 *.code-workspace
+.DS_Store
 cmake-build-debug/

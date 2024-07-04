@@ -460,6 +460,21 @@ TVG_API Tvg_Result tvg_shape_get_stroke_miterlimit(const Tvg_Paint* paint, float
 }
 
 
+TVG_API Tvg_Result tvg_shape_set_stroke_trim(Tvg_Paint* paint, float begin, float end, bool simultaneous)
+{
+    if (!paint) return TVG_RESULT_INVALID_ARGUMENT;
+    return (Tvg_Result) reinterpret_cast<Shape*>(paint)->strokeTrim(begin, end, simultaneous);
+}
+
+
+TVG_API Tvg_Result tvg_shape_get_stroke_trim(Tvg_Paint* paint, float* begin, float* end, bool* simultaneous)
+{
+    if (!paint) return TVG_RESULT_INVALID_ARGUMENT;
+    if (simultaneous) *simultaneous = reinterpret_cast<Shape*>(paint)->strokeTrim(begin, end);
+    return TVG_RESULT_SUCCESS;
+}
+
+
 TVG_API Tvg_Result tvg_shape_set_fill_color(Tvg_Paint* paint, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {
     if (!paint) return TVG_RESULT_INVALID_ARGUMENT;
@@ -700,6 +715,69 @@ TVG_API Tvg_Result tvg_scene_clear(Tvg_Paint* scene, bool free)
 {
     if (!scene) return TVG_RESULT_INVALID_ARGUMENT;
     return (Tvg_Result) reinterpret_cast<Scene*>(scene)->clear(free);
+}
+
+
+/************************************************************************/
+/* Text API                                                            */
+/************************************************************************/
+
+TVG_API Tvg_Paint* tvg_text_new()
+{
+    return (Tvg_Paint*)Text::gen().release();
+}
+
+
+TVG_API Tvg_Result tvg_text_set_font(Tvg_Paint* paint, const char* name, float size, const char* style)
+{
+    if (!paint) return TVG_RESULT_INVALID_ARGUMENT;
+    return (Tvg_Result) reinterpret_cast<Text*>(paint)->font(name, size, style);
+}
+
+
+TVG_API Tvg_Result tvg_text_set_text(Tvg_Paint* paint, const char* text)
+{
+    if (!paint) return TVG_RESULT_INVALID_ARGUMENT;
+    return (Tvg_Result) reinterpret_cast<Text*>(paint)->text(text);
+}
+
+
+TVG_API Tvg_Result tvg_text_set_fill_color(Tvg_Paint* paint, uint8_t r, uint8_t g, uint8_t b)
+{
+    if (!paint) return TVG_RESULT_INVALID_ARGUMENT;
+    return (Tvg_Result) reinterpret_cast<Text*>(paint)->fill(r, g, b);
+}
+
+
+TVG_API Tvg_Result tvg_text_set_linear_gradient(Tvg_Paint* paint, Tvg_Gradient* gradient)
+{
+    if (!paint) return TVG_RESULT_INVALID_ARGUMENT;
+    return (Tvg_Result) reinterpret_cast<Text*>(paint)->fill(unique_ptr<LinearGradient>((LinearGradient*)(gradient)));
+}
+
+
+TVG_API Tvg_Result tvg_text_set_radial_gradient(Tvg_Paint* paint, Tvg_Gradient* gradient)
+{
+    if (!paint) return TVG_RESULT_INVALID_ARGUMENT;
+    return (Tvg_Result) reinterpret_cast<Text*>(paint)->fill(unique_ptr<RadialGradient>((RadialGradient*)(gradient)));
+}
+
+
+TVG_API Tvg_Result tvg_font_load(const char* path)
+{
+    return (Tvg_Result) Text::load(path);
+}
+
+
+TVG_API Tvg_Result tvg_font_load_data(const char* name, const char* data, uint32_t size, const char *mimetype, bool copy)
+{
+    return (Tvg_Result) Text::load(name, data, size, mimetype ? mimetype : "", copy);
+}
+
+
+TVG_API Tvg_Result tvg_font_unload(const char* path)
+{
+    return (Tvg_Result) Text::unload(path);
 }
 
 

@@ -2,7 +2,20 @@ if (lib_type == 'static')
     compiler_flags += ['-DTVG_STATIC']
 endif
 
-examples_dep = dependency('elementary', required : true)
+if target_opengles
+    compiler_flags += '-DTHORVG_GL_TARGET_GLES=1'
+endif
+
+examples_dep = [dependency('sdl2')]
+
+if (get_option('engines').contains('wg_beta'))
+    examples_dep += dependency('wgpu_native')
+    if host_machine.system() == 'darwin'
+        add_languages('objcpp')
+        examples_dep += declare_dependency(link_args: ['-lobjc', '-framework', 'Cocoa', '-framework', 'CoreVideo', '-framework', 'IOKit', '-framework', 'QuartzCore'])
+        compiler_flags += ['-x', 'objective-c++']
+    endif
+endif
 
 source_file = [
     'Accessor.cpp',
@@ -16,6 +29,7 @@ source_file = [
     'DirectUpdate.cpp',
     'Duplicate.cpp',
     'FillRule.cpp',
+    'FillSpread.cpp',
     'GifSaver.cpp',
     'GradientMasking.cpp',
     'GradientStroke.cpp',
@@ -29,7 +43,6 @@ source_file = [
     'LumaMasking.cpp',
     'Masking.cpp',
     'MaskingMethods.cpp',
-    'MultiCanvas.cpp',
     'MultiShapes.cpp',
     'Opacity.cpp',
     'PathCopy.cpp',
@@ -51,6 +64,7 @@ source_file = [
     'Stroke.cpp',
     'StrokeLine.cpp',
     'StrokeMiterlimit.cpp',
+    'StrokeTrim.cpp',
     'Svg.cpp',
     'Texmap.cpp',
     'Text.cpp',
@@ -58,10 +72,11 @@ source_file = [
     'Tvg.cpp',
     'TvgSaver.cpp',
     'Update.cpp',
+    'Viewport.cpp'
 ]
 
 
-if get_option('loaders').contains('all') == true or get_option('loaders').contains('lottie') == true
+if lottie_loader
   source_file += 'LottieExtension.cpp'
 endif
 

@@ -108,10 +108,12 @@ class Stroker final
         bool hasMove = false;
     };
 public:
-    Stroker(Array<float>* points, Array<uint32_t>* indices);
+    Stroker(Array<float>* points, Array<uint32_t>* indices, const Matrix& matrix);
     ~Stroker() = default;
 
     void stroke(const RenderShape *rshape);
+
+    RenderRegion bounds() const;
 
 private:
     void doStroke(const PathCommand* cmds, uint32_t cmd_count, const Point* pts, uint32_t pts_count);
@@ -138,14 +140,21 @@ private:
     void strokeMiter(const GlPoint &prev, const GlPoint &curr, const GlPoint &center);
 
     void strokeBevel(const GlPoint &prev, const GlPoint &curr, const GlPoint &center);
+
+    void strokeSquare(const GlPoint& p, const GlPoint& outDir);
+
+    void strokeRound(const GlPoint& p, const GlPoint& outDir);
 private:
     Array<float>* mResGlPoints;
     Array<uint32_t>* mResIndices;
+    Matrix mMatrix;
     float mStrokeWidth = 1.f;
     float mMiterLimit = 4.f;
     StrokeCap mStrokeCap = StrokeCap::Square;
     StrokeJoin mStrokeJoin = StrokeJoin::Bevel;
     State mStrokeState = {};
+    GlPoint mLeftTop = {};
+    GlPoint mRightBottom = {};
 };
 
 class DashStroke
@@ -183,7 +192,9 @@ public:
     BWTessellator(Array<float>* points, Array<uint32_t>* indices);
     ~BWTessellator() = default;
 
-    void tessellate(const RenderShape *rshape);
+    void tessellate(const RenderShape *rshape, const Matrix& matrix);
+
+    RenderRegion bounds() const;
 
 private:
     uint32_t pushVertex(float x, float y);
@@ -192,6 +203,8 @@ private:
 private:
     Array<float>* mResPoints;
     Array<uint32_t>* mResIndices;
+    GlPoint mLeftTop = {};
+    GlPoint mRightBottom = {};
 };
 
 }  // namespace tvg

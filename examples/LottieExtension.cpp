@@ -17,199 +17,115 @@
  * SOFTWARE.
  */
 
-#include "Common.h"
 #include <thorvg_lottie.h>
+#include "Example.h"
 
 /************************************************************************/
-/* Drawing Commands                                                     */
+/* ThorVG Drawing Contents                                              */
 /************************************************************************/
 
-static unique_ptr<tvg::LottieAnimation> animation;
-static Elm_Transit *transit;
-static bool updated = false;
+#define NUM_PER_ROW 2
+#define NUM_PER_COL 1
 
-void tvgUpdateCmds(tvg::Canvas* canvas, tvg::LottieAnimation* animation, float progress)
+struct UserExample : tvgexam::Example
 {
-    if (updated || !canvas) return;
+    unique_ptr<tvg::LottieAnimation> slotAnimation;
+    unique_ptr<tvg::LottieAnimation> markerAnimation;
+    uint32_t w, h;
+    uint32_t size;
 
-    //Update animation frame only when it's changed
-    if (animation->frame(animation->totalFrame() * progress) == tvg::Result::Success) {
+    void sizing(tvg::Picture* picture, uint32_t counter)
+    {
+        //image scaling preserving its aspect ratio
+        float scale;
+        float shiftX = 0.0f, shiftY = 0.0f;
+        float w, h;
+        picture->size(&w, &h);
+
+        if (w > h) {
+            scale = size / w;
+            shiftY = (size - h * scale) * 0.5f;
+        } else {
+            scale = size / h;
+            shiftX = (size - w * scale) * 0.5f;
+        }
+
+        picture->scale(scale);
+        picture->translate((counter % NUM_PER_ROW) * size + shiftX, (counter / NUM_PER_ROW) * (this->h / NUM_PER_COL) + shiftY);
+    }
+
+    bool update(tvg::Canvas* canvas, uint32_t elapsed) override
+    {
+        if (!canvas) return false;
+
+        //slotsample
+        {
+            auto progress = tvgexam::progress(elapsed, slotAnimation->duration());
+            slotAnimation->frame(markerAnimation->totalFrame() * progress);
+        }
+
+        //marker
+        {
+            auto progress = tvgexam::progress(elapsed, markerAnimation->duration());
+            markerAnimation->frame(markerAnimation->totalFrame() * progress);
+        }
+
         canvas->update();
-        updated = true;
-    }
-}
 
-void tvgDrawCmds(tvg::Canvas* canvas)
-{
-    //Animation Controller
-    animation = tvg::LottieAnimation::gen();
-    auto picture = animation->picture();
-
-    //Background
-    auto shape = tvg::Shape::gen();
-    shape->appendRect(0, 0, WIDTH, HEIGHT);
-    shape->fill(50, 50, 50);
-
-    if (canvas->push(std::move(shape)) != tvg::Result::Success) return;
-
-    const char* slotJson = R"({"gradient_fill":{"p":{"a":0,"k":[0,0.1,0.1,0.2,1,1,0.1,0.2,0.1,1]}}})";
-
-    if (picture->load(EXAMPLE_DIR"/lottie/extensions/slotsample.json") != tvg::Result::Success) {
-        cout << "Lottie is not supported. Did you enable Lottie Loader?" << endl;
-        return;
+        return true;
     }
 
-    //image scaling preserving its aspect ratio
-    float scale;
-    float shiftX = 0.0f, shiftY = 0.0f;
-    float w, h;
-    picture->size(&w, &h);
+    bool content(tvg::Canvas* canvas, uint32_t w, uint32_t h) override
+    {
+        if (!canvas) return false;
 
-    if (w > h) {
-        scale = WIDTH / w;
-        shiftY = (HEIGHT - h * scale) * 0.5f;
-    } else {
-        scale = HEIGHT / h;
-        shiftX = (WIDTH - w * scale) * 0.5f;
+        //Background
+        auto shape = tvg::Shape::gen();
+        shape->appendRect(0, 0, w, h);
+        shape->fill(75, 75, 75);
+
+        canvas->push(std::move(shape));
+
+        this->w = w;
+        this->h = h;
+        this->size = w / NUM_PER_ROW;
+
+        //slotsample
+        {
+            slotAnimation = tvg::LottieAnimation::gen();
+            auto picture = slotAnimation->picture();
+            if (!tvgexam::verify(picture->load(EXAMPLE_DIR"/lottie/extensions/slotsample.json"))) return false;
+
+            const char* slotJson = R"({"gradient_fill":{"p":{"a":0,"k":[0,0.1,0.1,0.2,1,1,0.1,0.2,0.1,1]}}})";
+            if (!tvgexam::verify(slotAnimation->override(slotJson))) return false;
+
+            sizing(picture, 0);
+
+            canvas->push(tvg::cast(picture));
+        }
+
+        //marker
+        {
+            markerAnimation = tvg::LottieAnimation::gen();
+            auto picture = markerAnimation->picture();
+            if (!tvgexam::verify(picture->load(EXAMPLE_DIR"/lottie/extensions/marker_sample.json"))) return false;
+            if (!tvgexam::verify(markerAnimation->segment("sectionC"))) return false;
+
+            sizing(picture, 1);
+
+            canvas->push(tvg::cast(picture));
+        }
+
+        return true;
     }
-
-    picture->scale(scale);
-    picture->translate(shiftX, shiftY);
-
-    canvas->push(tvg::cast(picture));
-
-    //Override slot data
-    if (animation->override(slotJson) == tvg::Result::Success) {
-        canvas->update();
-    } else {
-        cout << "Failed to override the slot" << endl;
-    }
-
-    //Run animation loop
-    elm_transit_duration_set(transit, animation->duration());
-    elm_transit_repeat_times_set(transit, -1);
-    elm_transit_go(transit);
-}
+};
 
 
 /************************************************************************/
-/* Sw Engine Test Code                                                  */
-/************************************************************************/
-
-static unique_ptr<tvg::SwCanvas> swCanvas;
-
-void tvgSwTest(uint32_t* buffer)
-{
-    //Create a Canvas
-    swCanvas = tvg::SwCanvas::gen();
-    swCanvas->target(buffer, WIDTH, WIDTH, HEIGHT, tvg::SwCanvas::ARGB8888);
-
-    tvgDrawCmds(swCanvas.get());
-}
-
-void drawSwView(void* data, Eo* obj)
-{
-    //It's not necessary to clear buffer since it has a solid background
-    //swCanvas->clear(false);
-
-    if (swCanvas->draw() == tvg::Result::Success) {
-        swCanvas->sync();
-        updated = false;
-    }
-}
-
-void transitSwCb(Elm_Transit_Effect *effect, Elm_Transit* transit, double progress)
-{
-    tvgUpdateCmds(swCanvas.get(), animation.get(), progress);
-
-    //Update Efl Canvas
-    Eo* img = (Eo*) effect;
-    evas_object_image_data_update_add(img, 0, 0, WIDTH, HEIGHT);
-    evas_object_image_pixels_dirty_set(img, EINA_TRUE);
-}
-
-
-/************************************************************************/
-/* GL Engine Test Code                                                  */
-/************************************************************************/
-
-static unique_ptr<tvg::GlCanvas> glCanvas;
-
-void initGLview(Evas_Object *obj)
-{
-    //Create a Canvas
-    glCanvas = tvg::GlCanvas::gen();
-
-    //Get the drawing target id
-    int32_t targetId;
-    auto gl = elm_glview_gl_api_get(obj);
-    gl->glGetIntegerv(GL_FRAMEBUFFER_BINDING, &targetId);
-
-    glCanvas->target(targetId, WIDTH, HEIGHT);
-
-    tvgDrawCmds(glCanvas.get());
-}
-
-void drawGLview(Evas_Object *obj)
-{
-    auto gl = elm_glview_gl_api_get(obj);
-    gl->glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    gl->glClear(GL_COLOR_BUFFER_BIT);
-
-    if (glCanvas->draw() == tvg::Result::Success) {
-        glCanvas->sync();
-    }
-}
-
-void transitGlCb(Elm_Transit_Effect *effect, Elm_Transit* transit, double progress)
-{
-    tvgUpdateCmds(glCanvas.get(), animation.get(), progress);
-    elm_glview_changed_set((Evas_Object*)effect);
-}
-
-
-/************************************************************************/
-/* Main Code                                                            */
+/* Entry Point                                                          */
 /************************************************************************/
 
 int main(int argc, char **argv)
 {
-    auto tvgEngine = tvg::CanvasEngine::Sw;
-
-    if (argc > 1) {
-        if (!strcmp(argv[1], "gl")) tvgEngine = tvg::CanvasEngine::Gl;
-    }
-
-    //Threads Count
-    auto threads = std::thread::hardware_concurrency();
-    if (threads > 0) --threads;    //Allow the designated main thread capacity
-
-    //Initialize ThorVG Engine
-    if (tvg::Initializer::init(tvg::CanvasEngine::Sw, threads) == tvg::Result::Success) {
-
-        elm_init(argc, argv);
-
-        transit = elm_transit_add();
-
-        if (tvgEngine == tvg::CanvasEngine::Sw) {
-            auto view = createSwView(1024, 1024);
-            elm_transit_effect_add(transit, transitSwCb, view, nullptr);
-        } else {
-            auto view = createGlView(1024, 1024);
-            elm_transit_effect_add(transit, transitGlCb, view, nullptr);
-        }
-
-        elm_run();
-
-        elm_transit_del(transit);
-
-        elm_shutdown();
-
-        //Terminate ThorVG Engine
-        tvg::Initializer::term(tvg::CanvasEngine::Sw);
-    } else {
-        cout << "engine is not supported" << endl;
-    }
-
-    return 0;
+    return tvgexam::main(new UserExample, argc, argv);
 }

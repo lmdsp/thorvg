@@ -29,7 +29,7 @@
 // graphics pipelines
 //************************************************************************
 
-void WgPipelineFillShape::initialize(WGPUDevice device)
+void WgPipelineFillShapeWinding::initialize(WGPUDevice device)
 {
     // vertex attributes settings
     WGPUVertexAttribute vertexAttributesPos = { WGPUVertexFormat_Float32x2, sizeof(float) * 0, 0 };
@@ -44,19 +44,55 @@ void WgPipelineFillShape::initialize(WGPUDevice device)
     };
 
     // stencil function
-    WGPUCompareFunction stencilFuncion = WGPUCompareFunction_Always;
-    WGPUStencilOperation stencilOperation = WGPUStencilOperation_Invert;
+    WGPUCompareFunction stencilFuncionFront = WGPUCompareFunction_Always;
+    WGPUStencilOperation stencilOperationFront = WGPUStencilOperation_IncrementWrap;
+    WGPUCompareFunction stencilFuncionBack = WGPUCompareFunction_Always;
+    WGPUStencilOperation stencilOperationBack = WGPUStencilOperation_DecrementWrap;
 
     // sheder source and labels
     auto shaderSource = cShaderSource_PipelineFill;
     auto shaderLabel = "The shader fill";
-    auto pipelineLabel = "The render pipeline fill shape";
+    auto pipelineLabel = "The render pipeline fill shape winding";
 
     // allocate all pipeline handles
-    allocate(device, WgPipelineBlendType::Src,
+    allocate(device, WgPipelineBlendType::Add, WGPUColorWriteMask_None,
              vertexBufferLayouts, ARRAY_ELEMENTS_COUNT(vertexBufferLayouts),
              bindGroupLayouts, ARRAY_ELEMENTS_COUNT(bindGroupLayouts),
-             stencilFuncion, stencilOperation,
+             stencilFuncionFront, stencilOperationFront, stencilFuncionBack, stencilOperationBack,
+             shaderSource, shaderLabel, pipelineLabel);
+}
+
+
+void WgPipelineFillShapeEvenOdd::initialize(WGPUDevice device)
+{
+    // vertex attributes settings
+    WGPUVertexAttribute vertexAttributesPos = { WGPUVertexFormat_Float32x2, sizeof(float) * 0, 0 };
+    WGPUVertexBufferLayout vertexBufferLayouts[] = {
+        makeVertexBufferLayout(&vertexAttributesPos, 1, sizeof(float) * 2)
+    };
+
+    // bind groups
+    WGPUBindGroupLayout bindGroupLayouts[] = {
+        WgBindGroupCanvas::getLayout(device),
+        WgBindGroupPaint::getLayout(device)
+    };
+
+    // stencil function
+    WGPUCompareFunction stencilFuncionFront = WGPUCompareFunction_Always;
+    WGPUStencilOperation stencilOperationFront = WGPUStencilOperation_Invert;
+    WGPUCompareFunction stencilFuncionBack = WGPUCompareFunction_Always;
+    WGPUStencilOperation stencilOperationBack = WGPUStencilOperation_Invert;
+
+    // sheder source and labels
+    auto shaderSource = cShaderSource_PipelineFill;
+    auto shaderLabel = "The shader fill";
+    auto pipelineLabel = "The render pipeline fill shape Even Odd";
+
+    // allocate all pipeline handles
+    allocate(device, WgPipelineBlendType::Add, WGPUColorWriteMask_None,
+             vertexBufferLayouts, ARRAY_ELEMENTS_COUNT(vertexBufferLayouts),
+             bindGroupLayouts, ARRAY_ELEMENTS_COUNT(bindGroupLayouts),
+             stencilFuncionFront, stencilOperationFront, stencilFuncionBack, stencilOperationBack,
              shaderSource, shaderLabel, pipelineLabel);
 }
 
@@ -85,10 +121,10 @@ void WgPipelineFillStroke::initialize(WGPUDevice device)
     auto pipelineLabel = "The render pipeline fill stroke";
 
     // allocate all pipeline handles
-    allocate(device, WgPipelineBlendType::Src,
+    allocate(device, WgPipelineBlendType::Add, WGPUColorWriteMask_None,
              vertexBufferLayouts, ARRAY_ELEMENTS_COUNT(vertexBufferLayouts),
              bindGroupLayouts, ARRAY_ELEMENTS_COUNT(bindGroupLayouts),
-             stencilFuncion, stencilOperation,
+             stencilFuncion, stencilOperation, stencilFuncion, stencilOperation,
              shaderSource, shaderLabel, pipelineLabel);
 }
 
@@ -118,10 +154,10 @@ void WgPipelineSolid::initialize(WGPUDevice device, WgPipelineBlendType blendTyp
     auto pipelineLabel = "The render pipeline solid color";
 
     // allocate all pipeline handles
-    allocate(device, blendType,
+    allocate(device, blendType, WGPUColorWriteMask_All,
              vertexBufferLayouts, ARRAY_ELEMENTS_COUNT(vertexBufferLayouts),
              bindGroupLayouts, ARRAY_ELEMENTS_COUNT(bindGroupLayouts),
-             stencilFuncion, stencilOperation,
+             stencilFuncion, stencilOperation, stencilFuncion, stencilOperation,
              shaderSource, shaderLabel, pipelineLabel);
 }
 
@@ -151,10 +187,10 @@ void WgPipelineLinear::initialize(WGPUDevice device, WgPipelineBlendType blendTy
     auto pipelineLabel = "The render pipeline linear gradient";
 
     // allocate all pipeline handles
-    allocate(device, blendType,
+    allocate(device, blendType, WGPUColorWriteMask_All,
              vertexBufferLayouts, ARRAY_ELEMENTS_COUNT(vertexBufferLayouts),
              bindGroupLayouts, ARRAY_ELEMENTS_COUNT(bindGroupLayouts),
-             stencilFuncion, stencilOperation,
+             stencilFuncion, stencilOperation, stencilFuncion, stencilOperation,
              shaderSource, shaderLabel, pipelineLabel);
 }
 
@@ -184,10 +220,10 @@ void WgPipelineRadial::initialize(WGPUDevice device, WgPipelineBlendType blendTy
     auto pipelineLabel = "The render pipeline radial gradient";
 
     // allocate all pipeline handles
-    allocate(device, blendType,
+    allocate(device, blendType, WGPUColorWriteMask_All,
              vertexBufferLayouts, ARRAY_ELEMENTS_COUNT(vertexBufferLayouts),
              bindGroupLayouts, ARRAY_ELEMENTS_COUNT(bindGroupLayouts),
-             stencilFuncion, stencilOperation,
+             stencilFuncion, stencilOperation, stencilFuncion, stencilOperation,
              shaderSource, shaderLabel, pipelineLabel);
 }
 
@@ -219,10 +255,10 @@ void WgPipelineImage::initialize(WGPUDevice device, WgPipelineBlendType blendTyp
     auto pipelineLabel = "The render pipeline image";
 
     // allocate all pipeline handles
-    allocate(device, blendType,
+    allocate(device, blendType, WGPUColorWriteMask_All,
              vertexBufferLayouts, ARRAY_ELEMENTS_COUNT(vertexBufferLayouts),
              bindGroupLayouts, ARRAY_ELEMENTS_COUNT(bindGroupLayouts),
-             stencilFuncion, stencilOperation,
+             stencilFuncion, stencilOperation, stencilFuncion, stencilOperation,
              shaderSource, shaderLabel, pipelineLabel);
 }
 
@@ -234,7 +270,7 @@ void WgPipelineClear::initialize(WGPUDevice device)
 {
     // bind groups and layouts
     WGPUBindGroupLayout bindGroupLayouts[] = {
-        WgBindGroupTextureStorage::getLayout(device)
+        WgBindGroupTextureStorageRgba::getLayout(device)
     };
 
     // sheder source and labels
@@ -253,8 +289,8 @@ void WgPipelineBlend::initialize(WGPUDevice device)
 {
     // bind groups and layouts
     WGPUBindGroupLayout bindGroupLayouts[] = {
-        WgBindGroupTextureStorage::getLayout(device),
-        WgBindGroupTextureStorage::getLayout(device),
+        WgBindGroupTextureStorageRgba::getLayout(device),
+        WgBindGroupTextureStorageRgba::getLayout(device),
         WgBindGroupBlendMethod::getLayout(device)
     };
 
@@ -274,8 +310,8 @@ void WgPipelineCompose::initialize(WGPUDevice device)
 {
     // bind groups and layouts
     WGPUBindGroupLayout bindGroupLayouts[] = {
-        WgBindGroupTextureStorage::getLayout(device),
-        WgBindGroupTextureStorage::getLayout(device),
+        WgBindGroupTextureStorageRgba::getLayout(device),
+        WgBindGroupTextureStorageRgba::getLayout(device),
         WgBindGroupCompositeMethod::getLayout(device),
         WgBindGroupOpacity::getLayout(device)
     };
@@ -292,12 +328,34 @@ void WgPipelineCompose::initialize(WGPUDevice device)
 }
 
 
+void WgPipelineComposeBlend::initialize(WGPUDevice device)
+{
+    // bind groups and layouts
+    WGPUBindGroupLayout bindGroupLayouts[] = {
+        WgBindGroupTexComposeBlend::getLayout(device),
+        WgBindGroupCompositeMethod::getLayout(device),
+        WgBindGroupBlendMethod::getLayout(device),
+        WgBindGroupOpacity::getLayout(device)
+    };
+
+    // sheder source and labels
+    auto shaderSource = cShaderSource_PipelineComputeComposeBlend;
+    auto shaderLabel = "The compute shader compose blend";
+    auto pipelineLabel = "The compute pipeline compose blend";
+
+    // allocate all pipeline handles
+    allocate(device,
+             bindGroupLayouts, ARRAY_ELEMENTS_COUNT(bindGroupLayouts),
+             shaderSource, shaderLabel, pipelineLabel);
+}
+
+
 void WgPipelineAntiAliasing::initialize(WGPUDevice device)
 {
     // bind groups and layouts
     WGPUBindGroupLayout bindGroupLayouts[] = {
-        WgBindGroupTextureStorage::getLayout(device),
-        WgBindGroupTextureStorage::getLayout(device)
+        WgBindGroupTextureStorageRgba::getLayout(device),
+        WgBindGroupTextureStorageBgra::getLayout(device)
     };
 
     // sheder source and labels
@@ -318,7 +376,8 @@ void WgPipelineAntiAliasing::initialize(WGPUDevice device)
 void WgPipelines::initialize(WgContext& context)
 {
     // fill pipelines
-    fillShape.initialize(context.device);
+    fillShapeWinding.initialize(context.device);
+    fillShapeEvenOdd.initialize(context.device);
     fillStroke.initialize(context.device);
     for (uint8_t type = (uint8_t)WgPipelineBlendType::Src; type <= (uint8_t)WgPipelineBlendType::Max; type++) {
         solid[type].initialize(context.device, (WgPipelineBlendType)type);
@@ -330,6 +389,7 @@ void WgPipelines::initialize(WgContext& context)
     computeClear.initialize(context.device);
     computeBlend.initialize(context.device);
     computeCompose.initialize(context.device);
+    computeComposeBlend.initialize(context.device);
     computeAntiAliasing.initialize(context.device);
     // store pipelines to context
     context.pipelines = this;
@@ -338,8 +398,10 @@ void WgPipelines::initialize(WgContext& context)
 
 void WgPipelines::release()
 {
+    WgBindGroupTexComposeBlend::layout = nullptr;
     WgBindGroupTextureSampled::releaseLayout();
-    WgBindGroupTextureStorage::releaseLayout();
+    WgBindGroupTextureStorageBgra::releaseLayout();
+    WgBindGroupTextureStorageRgba::releaseLayout();
     WgBindGroupTexture::releaseLayout();
     WgBindGroupOpacity::releaseLayout();
     WgBindGroupPicture::releaseLayout();
@@ -350,6 +412,7 @@ void WgPipelines::release()
     WgBindGroupCanvas::releaseLayout();
     // compute pipelines
     computeAntiAliasing.release();
+    computeComposeBlend.release();
     computeCompose.release();
     computeBlend.release();
     computeClear.release();
@@ -361,7 +424,8 @@ void WgPipelines::release()
         solid[type].release();
     }
     fillStroke.release();
-    fillShape.release();
+    fillShapeEvenOdd.release();
+    fillShapeWinding.release();
 }
 
 

@@ -1,13 +1,13 @@
 option('engines',
    type: 'array',
-   choices: ['sw', 'gl_beta', 'wg_beta'],
+   choices: ['sw', 'gl', 'wg_beta', 'all'],
    value: ['sw'],
    description: 'Enable Rasterizer Engine in thorvg')
 
 option('loaders',
    type: 'array',
    choices: ['', 'tvg', 'svg', 'png', 'jpg', 'lottie', 'ttf', 'webp', 'all'],
-   value: ['svg', 'tvg', 'lottie'],
+   value: ['svg', 'tvg', 'lottie', 'ttf'],
    description: 'Enable File Loaders in thorvg')
 
 option('savers',
