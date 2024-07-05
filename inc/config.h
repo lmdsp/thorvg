@@ -24,7 +24,7 @@
 
 #define THORVG_TVG_LOADER_SUPPORT    1
 
-#define THORVG_VERSION_STRING        "0.14.0"
+#define THORVG_VERSION_STRING        "0.14.1"
 
 #if 0
 #    ifdef _DEBUG
