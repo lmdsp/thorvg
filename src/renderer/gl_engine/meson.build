@@ -6,6 +6,7 @@ source_file = [
    'tvgGlProgram.h',
    'tvgGlRenderer.h',
    'tvgGlRenderPass.h',
+   'tvgGlRenderTarget.h',
    'tvgGlRenderTask.h',
    'tvgGlShader.h',
    'tvgGlShaderSrc.h',
@@ -14,6 +15,7 @@ source_file = [
    'tvgGlProgram.cpp',
    'tvgGlRenderer.cpp',
    'tvgGlRenderPass.cpp',
+   'tvgGlRenderTarget.cpp',
    'tvgGlRenderTask.cpp',
    'tvgGlShader.cpp',
    'tvgGlShaderSrc.cpp',
@@ -23,6 +25,7 @@ source_file = [
 
 if host_machine.system() == 'darwin'
     gl_dep = declare_dependency(link_args: ['-framework', 'OpenGL'])
+    compiler_flags += ['-Wno-deprecated']     #for deprecated opengl
 else
     #find a opengl library with fallbacks
     gl_dep = dependency('GL', required: false)

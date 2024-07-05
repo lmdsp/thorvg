@@ -25,6 +25,7 @@
 
 #include <vector>
 
+#include "tvgGlRenderTarget.h"
 #include "tvgGlRenderTask.h"
 #include "tvgGlGpuBuffer.h"
 #include "tvgGlRenderPass.h"
@@ -92,8 +93,10 @@ private:
     GlRenderPass* currentPass();
 
     void prepareBlitTask(GlBlitTask* task);
-    void prepareCmpTask(GlRenderTask* task, const RenderRegion& vp);
+    void prepareCmpTask(GlRenderTask* task, const RenderRegion& vp, uint32_t cmpWidth, uint32_t cmpHeight);
     void endRenderPass(Compositor* cmp);
+
+    void clearDisposes();
 
     Surface surface;
     GLint mTargetFboId = 0;
@@ -102,9 +105,15 @@ private:
     unique_ptr<GlStageBuffer> mGpuBuffer;
     vector<std::unique_ptr<GlProgram>> mPrograms;
     unique_ptr<GlRenderTarget> mRootTarget = {};
-    Array<GlRenderTarget*> mComposePool = {};
+    Array<GlRenderTargetPool*> mComposePool = {};
     vector<GlRenderPass> mRenderPassStack = {};
     vector<unique_ptr<GlCompositor>> mComposeStack = {};
+
+    //Disposed resources. They should be released on synced call.
+    struct {
+        Array<GLuint> textures = {};
+        Key key;
+    } mDisposed;
 };
 
 #endif /* _TVG_GL_RENDERER_H_ */
