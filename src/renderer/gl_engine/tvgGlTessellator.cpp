@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 
+#include "tvgMath.h"
 #include "tvgGlTessellator.h"
 #include "tvgRender.h"
 #include "tvgGlList.h"
@@ -454,8 +455,8 @@ bool Edge::intersect(Edge *other, GlPoint *point)
 
     double scale = 1.0 / denom;
 
-    point->x = std::round(static_cast<float>(top->point.x - s_number * le_b * scale));
-    point->y = std::round(static_cast<float>(top->point.y + s_number * le_a * scale));
+    point->x = nearbyintf(static_cast<float>(top->point.x - s_number * le_b * scale));
+    point->y = nearbyintf(static_cast<float>(top->point.y + s_number * le_a * scale));
 
     if (std::isinf(point->x) || std::isinf(point->y)) {
         return false;
@@ -780,7 +781,7 @@ static int32_t _bezierCurveCount(const Bezier &curve)
 
 static Bezier _bezFromArc(const GlPoint& start, const GlPoint& end, float radius) {
     // Calculate the angle between the start and end points
-    float angle = atan2(end.y - start.y, end.x - start.x);
+    float angle = mathAtan2(end.y - start.y, end.x - start.x);
 
     // Calculate the control points of the cubic bezier curve
     float c = radius * 0.552284749831;  // c = radius * (4/3) * tan(pi/8)

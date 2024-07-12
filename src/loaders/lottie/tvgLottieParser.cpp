@@ -348,7 +348,7 @@ void LottieParser::getValue(RGB24& color)
 
     while (nextArrayValue()) {
         auto val = getFloat();
-        if (i < 3) color.rgb[i++] = int32_t(lroundf(val * 255.0f));
+        if (i < 3) color.rgb[i++] = (int32_t)nearbyint(val * 255.0f);
     }
 
     //TODO: color filter?
@@ -543,7 +543,7 @@ LottieRect* LottieParser::parseRect()
         else if (KEY_AS("s")) parseProperty<LottieProperty::Type::Point>(rect->size);
         else if (KEY_AS("p")) parseProperty<LottieProperty::Type::Position>(rect->position);
         else if (KEY_AS("r")) parseProperty<LottieProperty::Type::Float>(rect->radius);
-        else if (KEY_AS("d")) rect->direction = getDirection();
+        else if (KEY_AS("d")) rect->clockwise = getDirection();
         else skip(key);
     }
     rect->prepare();
@@ -561,7 +561,7 @@ LottieEllipse* LottieParser::parseEllipse()
         if (parseCommon(ellipse, key)) continue;
         else if (KEY_AS("p")) parseProperty<LottieProperty::Type::Position>(ellipse->position);
         else if (KEY_AS("s")) parseProperty<LottieProperty::Type::Point>(ellipse->size);
-        else if (KEY_AS("d")) ellipse->direction = getDirection();
+        else if (KEY_AS("d")) ellipse->clockwise = getDirection();
         else skip(key);
     }
     ellipse->prepare();
@@ -698,7 +698,7 @@ LottiePath* LottieParser::parsePath()
     while (auto key = nextObjectKey()) {
         if (parseCommon(path, key)) continue;
         else if (KEY_AS("ks")) getPathSet(path->pathset);
-        else if (KEY_AS("d")) path->direction = getDirection();
+        else if (KEY_AS("d")) path->clockwise = getDirection();
         else skip(key);
     }
     path->prepare();
@@ -722,7 +722,7 @@ LottiePolyStar* LottieParser::parsePolyStar()
         else if (KEY_AS("os")) parseProperty<LottieProperty::Type::Float>(star->outerRoundness);
         else if (KEY_AS("r")) parseProperty<LottieProperty::Type::Float>(star->rotation);
         else if (KEY_AS("sy")) star->type = (LottiePolyStar::Type) getInt();
-        else if (KEY_AS("d")) star->direction = getDirection();
+        else if (KEY_AS("d")) star->clockwise = getDirection();
         else skip(key);
     }
     star->prepare();
@@ -899,7 +899,7 @@ void LottieParser::parseObject(Array<LottieObject*>& parent)
 }
 
 
-LottieImage* LottieParser::parseImage(const char* data, const char* subPath, bool embedded)
+LottieImage* LottieParser::parseImage(const char* data, const char* subPath, bool embedded, float width, float height)
 {
     //Used for Image Asset
     auto image = new LottieImage;
@@ -922,6 +922,8 @@ LottieImage* LottieParser::parseImage(const char* data, const char* subPath, boo
         snprintf(image->path, len, "%s%s%s", dirName, subPath, data);
     }
 
+    image->width = width;
+    image->height = height;
     image->prepare();
 
     return image;
@@ -938,6 +940,8 @@ LottieObject* LottieParser::parseAsset()
     //Used for Image Asset
     const char* data = nullptr;
     const char* subPath = nullptr;
+    float width = 0.0f;
+    float height = 0.0f;
     auto embedded = false;
 
     while (auto key = nextObjectKey()) {
@@ -952,10 +956,12 @@ LottieObject* LottieParser::parseAsset()
         else if (KEY_AS("layers")) obj = parseLayers();
         else if (KEY_AS("u")) subPath = getString();
         else if (KEY_AS("p")) data = getString();
+        else if (KEY_AS("w")) width = getFloat();
+        else if (KEY_AS("h")) height = getFloat();
         else if (KEY_AS("e")) embedded = getInt();
         else skip(key);
     }
-    if (data) obj = parseImage(data, subPath, embedded);
+    if (data) obj = parseImage(data, subPath, embedded, width, height);
     if (obj) obj->id = id;
     return obj;
 }
@@ -1083,11 +1089,10 @@ void LottieParser::parseTimeRemap(LottieLayer* layer)
 uint8_t LottieParser::getDirection()
 {
     auto v = getInt();
-    if (v == 1) return 0;
-    if (v == 2) return 3;
-    if (v == 3) return 2;
-    return 0;
+    if (v == 3) return false;
+    return true;
 }
+
 
 void LottieParser::parseShapes(Array<LottieObject*>& parent)
 {
@@ -1114,15 +1119,46 @@ void LottieParser::parseTextRange(LottieText* text)
     enterArray();
     while (nextArrayValue()) {
         enterObject();
+
+        auto selector = new LottieTextRange;
+
         while (auto key = nextObjectKey()) {
-            if (KEY_AS("a")) {  //text style
+            if (KEY_AS("s")) { // text range selector
                 enterObject();
                 while (auto key = nextObjectKey()) {
-                    if (KEY_AS("t")) parseProperty<LottieProperty::Type::Float>(text->spacing);
+                    if (KEY_AS("t")) selector->expressible = (bool) getInt();
+                    else if (KEY_AS("xe")) parseProperty<LottieProperty::Type::Float>(selector->maxEase);
+                    else if (KEY_AS("ne")) parseProperty<LottieProperty::Type::Float>(selector->minEase);
+                    else if (KEY_AS("a")) parseProperty<LottieProperty::Type::Float>(selector->maxAmount);
+                    else if (KEY_AS("b")) selector->based = (LottieTextRange::Based) getInt();
+                    else if (KEY_AS("rn")) selector->randomize = (bool) getInt();
+                    else if (KEY_AS("sh")) selector->shape = (LottieTextRange::Shape) getInt();
+                    else if (KEY_AS("o")) parseProperty<LottieProperty::Type::Float>(selector->offset);
+                    else if (KEY_AS("r")) selector->rangeUnit = (LottieTextRange::Unit) getInt();
+                    else if (KEY_AS("sm")) parseProperty<LottieProperty::Type::Float>(selector->smoothness);
+                    else if (KEY_AS("s")) parseProperty<LottieProperty::Type::Float>(selector->start);
+                    else if (KEY_AS("e")) parseProperty<LottieProperty::Type::Float>(selector->end);
+                    else skip(key);
+                }
+            } else if (KEY_AS("a")) { // text style
+                enterObject();
+                while (auto key = nextObjectKey()) {
+                    if (KEY_AS("t")) parseProperty<LottieProperty::Type::Float>(selector->style.letterSpacing);
+                    else if (KEY_AS("fc")) parseProperty<LottieProperty::Type::Color>(selector->style.fillColor);
+                    else if (KEY_AS("fo")) parseProperty<LottieProperty::Type::Color>(selector->style.fillOpacity);
+                    else if (KEY_AS("sw")) parseProperty<LottieProperty::Type::Float>(selector->style.strokeWidth);
+                    else if (KEY_AS("sc")) parseProperty<LottieProperty::Type::Color>(selector->style.strokeColor);
+                    else if (KEY_AS("so")) parseProperty<LottieProperty::Type::Opacity>(selector->style.strokeOpacity);
+                    else if (KEY_AS("o")) parseProperty<LottieProperty::Type::Opacity>(selector->style.opacity);
+                    else if (KEY_AS("p")) parseProperty<LottieProperty::Type::Position>(selector->style.position);
+                    else if (KEY_AS("s")) parseProperty<LottieProperty::Type::Position>(selector->style.scale);
+                    else if (KEY_AS("r")) parseProperty<LottieProperty::Type::Float>(selector->style.rotation);
                     else skip(key);
                 }
             } else skip(key);
         }
+
+        text->ranges.push(selector);
     }
 }
 
@@ -1204,6 +1240,7 @@ LottieLayer* LottieParser::parseLayer()
     context.layer = layer;
 
     auto ddd = false;
+    RGB24 color;
 
     enterObject();
 
@@ -1232,7 +1269,7 @@ LottieLayer* LottieParser::parseLayer()
         else if (KEY_AS("tm")) parseTimeRemap(layer);
         else if (KEY_AS("w") || KEY_AS("sw")) getLayerSize(layer->w);
         else if (KEY_AS("h") || KEY_AS("sh")) getLayerSize(layer->h);
-        else if (KEY_AS("sc")) layer->color = getColor(getString());
+        else if (KEY_AS("sc")) color = getColor(getString());
         else if (KEY_AS("tt")) layer->matteType = getMatteType();
         else if (KEY_AS("tp")) layer->mid = getInt();
         else if (KEY_AS("masksProperties")) parseMasks(layer);
@@ -1248,7 +1285,7 @@ LottieLayer* LottieParser::parseLayer()
         else skip(key);
     }
 
-    layer->prepare();
+    layer->prepare(&color);
 
     return layer;
 }

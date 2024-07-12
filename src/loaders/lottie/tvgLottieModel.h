@@ -148,6 +148,43 @@ struct LottieGlyph
 };
 
 
+struct LottieTextStyle
+{
+    LottieColor fillColor = RGB24{255, 255, 255};
+    LottieColor strokeColor = RGB24{255, 255, 255};
+    LottiePosition position = Point{0, 0};
+    LottiePoint scale = Point{100, 100};
+    LottieFloat letterSpacing = 0.0f;
+    LottieFloat strokeWidth = 0.0f;
+    LottieFloat rotation = 0.0f;
+    LottieOpacity fillOpacity = 255;
+    LottieOpacity strokeOpacity = 255;
+    LottieOpacity opacity = 255;
+};
+
+
+struct LottieTextRange
+{
+    enum Based : uint8_t { Chars = 1, CharsExcludingSpaces, Words, Lines };
+    enum Shape : uint8_t { Square = 1, RampUp, RampDown, Triangle, Round, Smooth };
+    enum Unit : uint8_t { Percent = 1, Index };
+
+    LottieTextStyle style;
+    LottieFloat offset = 0.0f;
+    LottieFloat maxEase = 0.0f;
+    LottieFloat minEase = 0.0f;
+    LottieFloat maxAmount = 0.0f;
+    LottieFloat smoothness = 0.0f;
+    LottieFloat start = 0.0f;
+    LottieFloat end = 0.0f;
+    Based based = Chars;
+    Shape shape = Square;
+    Unit rangeUnit = Percent;
+    bool expressible = false;
+    bool randomize = false;
+};
+
+
 struct LottieFont
 {
     enum Origin : uint8_t { Local = 0, CssURL, ScriptURL, FontURL, Embedded };
@@ -195,7 +232,12 @@ struct LottieText : LottieObject
 
     LottieTextDoc doc;
     LottieFont* font;
-    LottieFloat spacing = 0.0f;  //letter spacing
+    Array<LottieTextRange*> ranges;
+
+    ~LottieText()
+    {
+        for (auto r = ranges.begin(); r < ranges.end(); ++r) delete(*r);
+    }
 };
 
 
@@ -226,7 +268,7 @@ struct LottieTrimpath : LottieObject
 struct LottieShape : LottieObject
 {
     virtual ~LottieShape() {}
-    uint8_t direction = 0;   //0: clockwise, 2: counter-clockwise, 3: xor(?)
+    bool clockwise = true;   //clockwise or counter-clockwise
 
     bool mergeable() override
     {
@@ -458,6 +500,8 @@ struct LottieImage : LottieObject
     char* mimeType = nullptr;
     uint32_t size = 0;
     uint16_t refCnt = 0;   //refernce count
+    float width = 0.0f;
+    float height = 0.0f;
 
     ~LottieImage();
 
@@ -538,7 +582,7 @@ struct LottieLayer : LottieGroup
 
     bool mergeable() override { return false; }
 
-    void prepare();
+    void prepare(RGB24* color = nullptr);
     float remap(float frameNo, LottieExpressions* exp);
 
     char* name = nullptr;
@@ -547,8 +591,9 @@ struct LottieLayer : LottieGroup
     LottieComposition* comp = nullptr;
     LottieTransform* transform = nullptr;
     Array<LottieMask*> masks;
-    RGB24 color;  //used by Solid layer
     LottieLayer* matteTarget = nullptr;
+
+    tvg::Shape* solidFill = nullptr;
 
     float timeStretch = 1.0f;
     float w = 0.0f, h = 0.0f;

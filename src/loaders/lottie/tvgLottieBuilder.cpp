@@ -58,7 +58,7 @@ struct RenderContext
 {
     INLIST_ITEM(RenderContext);
 
-    Shape* propagator = nullptr;
+    Shape* propagator = nullptr;  //for propagating the shape properties excluding paths
     Shape* merging = nullptr;  //merging shapes if possible (if shapes have same properties)
     LottieObject** begin = nullptr; //iteration entry point
     Array<RenderRepeater> repeaters;
@@ -100,21 +100,22 @@ struct RenderContext
 static void _updateChildren(LottieGroup* parent, float frameNo, Inlist<RenderContext>& contexts, LottieExpressions* exps);
 static void _updateLayer(LottieLayer* root, LottieLayer* layer, float frameNo, LottieExpressions* exps);
 static bool _buildComposition(LottieComposition* comp, LottieLayer* parent);
-static Shape* _draw(LottieGroup* parent, RenderContext* ctx);
+static bool _draw(LottieGroup* parent, RenderContext* ctx);
 
-static void _rotateX(Matrix* m, float degree)
+
+static void _rotationXYZ(Matrix* m, float degreeX, float degreeY, float degreeZ)
 {
-    if (degree == 0.0f) return;
-    auto radian = mathDeg2Rad(degree);
-    m->e22 *= cosf(radian);
-}
+    auto radianX = mathDeg2Rad(degreeX);
+    auto radianY = mathDeg2Rad(degreeY);
+    auto radianZ = mathDeg2Rad(degreeZ);
 
-
-static void _rotateY(Matrix* m, float degree)
-{
-    if (degree == 0.0f) return;
-    auto radian = mathDeg2Rad(degree);
-    m->e11 *= cosf(radian);
+    auto cx = cosf(radianX), sx = sinf(radianX);
+    auto cy = cosf(radianY), sy = sinf(radianY);;
+    auto cz = cosf(radianZ), sz = sinf(radianZ);;
+    m->e11 = cy * cz;
+    m->e12 = -cy * sz;
+    m->e21 = sx * sy * cz + cx * sz;
+    m->e22 = -sx * sy * sz + cx * cz;
 }
 
 
@@ -183,12 +184,9 @@ static bool _updateTransform(LottieTransform* transform, float frameNo, bool aut
 
     auto angle = 0.0f;
     if (autoOrient) angle = transform->position.angle(frameNo);
-    _rotationZ(&matrix, transform->rotation(frameNo, exps) + angle);
+    if (transform->rotationEx) _rotationXYZ(&matrix, transform->rotationEx->x(frameNo, exps), transform->rotationEx->y(frameNo, exps), transform->rotation(frameNo, exps) + angle);
+    else _rotationZ(&matrix, transform->rotation(frameNo, exps) + angle);
 
-    if (transform->rotationEx) {
-        _rotateY(&matrix, transform->rotationEx->y(frameNo, exps));
-        _rotateX(&matrix, transform->rotationEx->x(frameNo, exps));
-    }
 
     auto skewAngle = transform->skewAngle(frameNo, exps);
     if (skewAngle != 0.0f) {
@@ -377,15 +375,15 @@ static void _updateGradientFill(TVG_UNUSED LottieGroup* parent, LottieObject** c
 }
 
 
-static Shape* _draw(LottieGroup* parent, RenderContext* ctx)
+static bool _draw(LottieGroup* parent, RenderContext* ctx)
 {
-    if (ctx->merging) return ctx->merging;
+    if (ctx->merging) return false;
 
     auto shape = cast<Shape>(ctx->propagator->duplicate());
     ctx->merging = shape.get();
     parent->scene->push(std::move(shape));
 
-    return ctx->merging;
+    return true;
 }
 
 
@@ -449,7 +447,7 @@ static void _repeat(LottieGroup* parent, unique_ptr<Shape> path, RenderContext* 
 }
 
 
-static void _appendRect(Shape* shape, float x, float y, float w, float h, float r, Matrix* transform)
+static void _appendRect(Shape* shape, float x, float y, float w, float h, float r, Matrix* transform, bool clockwise)
 {
     //sharp rect
     if (mathZero(r)) {
@@ -458,7 +456,18 @@ static void _appendRect(Shape* shape, float x, float y, float w, float h, float 
             PathCommand::LineTo, PathCommand::Close
         };
 
-        Point points[] = {{x + w, y}, {x + w, y + h}, {x, y + h}, {x, y}};
+        Point points[4];
+        if (clockwise) {
+            points[0] = {x + w, y};
+            points[1] = {x + w, y + h};
+            points[2] = {x, y + h};
+            points[3] = {x, y};
+        } else {
+            points[0] = {x + w, y};
+            points[1] = {x, y};
+            points[2] = {x, y + h};
+            points[3] = {x + w, y + h};
+        }
         if (transform) {
             for (int i = 0; i < 4; i++) {
                 points[i] *= *transform;
@@ -467,12 +476,8 @@ static void _appendRect(Shape* shape, float x, float y, float w, float h, float 
         shape->appendPath(commands, 5, points, 4);
     //round rect
     } else {
-        PathCommand commands[] = {
-            PathCommand::MoveTo, PathCommand::LineTo, PathCommand::CubicTo,
-            PathCommand::LineTo, PathCommand::CubicTo, PathCommand::LineTo,
-            PathCommand::CubicTo, PathCommand::LineTo, PathCommand::CubicTo,
-            PathCommand::Close
-        };
+        constexpr int cmdCnt = 10;
+        PathCommand commands[cmdCnt];
 
         auto halfW = w * 0.5f;
         auto halfH = h * 0.5f;
@@ -482,24 +487,44 @@ static void _appendRect(Shape* shape, float x, float y, float w, float h, float 
         auto hry = ry * PATH_KAPPA;
 
         constexpr int ptsCnt = 17;
-        Point points[ptsCnt] = {
-            {x + w, y + ry}, //moveTo
-            {x + w, y + h - ry}, //lineTo
-            {x + w, y + h - ry + hry}, {x + w - rx + hrx, y + h}, {x + w - rx, y + h}, //cubicTo
-            {x + rx, y + h}, //lineTo
-            {x + rx - hrx, y + h}, {x, y + h - ry + hry}, {x, y + h - ry}, //cubicTo
-            {x, y + ry}, //lineTo
-            {x, y + ry - hry}, {x + rx - hrx, y}, {x + rx, y}, //cubicTo
-            {x + w - rx, y}, //lineTo
-            {x + w - rx + hrx, y}, {x + w, y + ry - hry}, {x + w, y + ry} //cubicTo
-        };
-    
+        Point points[ptsCnt];
+        if (clockwise) {
+            commands[0] = PathCommand::MoveTo; commands[1] = PathCommand::LineTo; commands[2] = PathCommand::CubicTo;
+            commands[3] = PathCommand::LineTo; commands[4] = PathCommand::CubicTo;commands[5] = PathCommand::LineTo;
+            commands[6] = PathCommand::CubicTo; commands[7] = PathCommand::LineTo; commands[8] = PathCommand::CubicTo;
+            commands[9] = PathCommand::Close;
+
+            points[0] = {x + w, y + ry}; //moveTo
+            points[1] = {x + w, y + h - ry}; //lineTo
+            points[2] = {x + w, y + h - ry + hry}; points[3] = {x + w - rx + hrx, y + h}; points[4] = {x + w - rx, y + h}; //cubicTo
+            points[5] = {x + rx, y + h}, //lineTo
+            points[6] = {x + rx - hrx, y + h}; points[7] = {x, y + h - ry + hry}; points[8] = {x, y + h - ry}; //cubicTo
+            points[9] = {x, y + ry}, //lineTo
+            points[10] = {x, y + ry - hry}; points[11] = {x + rx - hrx, y}; points[12] = {x + rx, y}; //cubicTo
+            points[13] = {x + w - rx, y}; //lineTo
+            points[14] = {x + w - rx + hrx, y}; points[15] = {x + w, y + ry - hry}; points[16] = {x + w, y + ry}; //cubicTo
+        } else {
+            commands[0] = PathCommand::MoveTo; commands[1] = PathCommand::CubicTo; commands[2] = PathCommand::LineTo;
+            commands[3] = PathCommand::CubicTo; commands[4] = PathCommand::LineTo; commands[5] = PathCommand::CubicTo;
+            commands[6] = PathCommand::LineTo; commands[7] = PathCommand::CubicTo; commands[8] = PathCommand::LineTo;
+            commands[9] = PathCommand::Close;
+
+            points[0] = {x + w, y + ry}; //moveTo
+            points[1] = {x + w, y + ry - hry}; points[2] = {x + w - rx + hrx, y}; points[3] = {x + w - rx, y}; //cubicTo
+            points[4] = {x + rx, y}, //lineTo
+            points[5] = {x + rx - hrx, y}; points[6] = {x, y + ry - hry}; points[7] = {x, y + ry}; //cubicTo
+            points[8] = {x, y + h - ry}; //lineTo
+            points[9] = {x, y + h - ry + hry}; points[10] = {x + rx - hrx, y + h}; points[11] = {x + rx, y + h}; //cubicTo
+            points[12] = {x + w - rx, y + h}; //lineTo
+            points[13] = {x + w - rx + hrx, y + h}; points[14] = {x + w, y + h - ry + hry}; points[15] = {x + w, y + h - ry}; //cubicTo
+            points[16] = {x + w, y + ry}; //lineTo
+        }
         if (transform) {
             for (int i = 0; i < ptsCnt; i++) {
                 points[i] *= *transform;
             }
         }
-        shape->appendPath(commands, 10, points, ptsCnt);
+        shape->appendPath(commands, cmdCnt, points, ptsCnt);
     }
 }
 
@@ -519,11 +544,11 @@ static void _updateRect(LottieGroup* parent, LottieObject** child, float frameNo
 
     if (!ctx->repeaters.empty()) {
         auto path = Shape::gen();
-        _appendRect(path.get(), position.x - size.x * 0.5f, position.y - size.y * 0.5f, size.x, size.y, roundness, ctx->transform);
+        _appendRect(path.get(), position.x - size.x * 0.5f, position.y - size.y * 0.5f, size.x, size.y, roundness, ctx->transform, rect->clockwise);
         _repeat(parent, std::move(path), ctx);
     } else {
-        auto merging = _draw(parent, ctx);
-        _appendRect(merging, position.x - size.x * 0.5f, position.y - size.y * 0.5f, size.x, size.y, roundness, ctx->transform);
+        _draw(parent, ctx);
+        _appendRect(ctx->merging, position.x - size.x * 0.5f, position.y - size.y * 0.5f, size.x, size.y, roundness, ctx->transform, rect->clockwise);
     }
 }
 
@@ -570,8 +595,8 @@ static void _updateEllipse(LottieGroup* parent, LottieObject** child, float fram
         _appendCircle(path.get(), position.x, position.y, size.x * 0.5f, size.y * 0.5f, ctx->transform);
         _repeat(parent, std::move(path), ctx);
     } else {
-        auto merging = _draw(parent, ctx);
-        _appendCircle(merging, position.x, position.y, size.x * 0.5f, size.y * 0.5f, ctx->transform);
+        _draw(parent, ctx);
+        _appendCircle(ctx->merging, position.x, position.y, size.x * 0.5f, size.y * 0.5f, ctx->transform);
     }
 }
 
@@ -585,9 +610,9 @@ static void _updatePath(LottieGroup* parent, LottieObject** child, float frameNo
         path->pathset(frameNo, P(p)->rs.path.cmds, P(p)->rs.path.pts, ctx->transform, ctx->roundness, exps);
         _repeat(parent, std::move(p), ctx);
     } else {
-        auto merging = _draw(parent, ctx);
-        if (path->pathset(frameNo, P(merging)->rs.path.cmds, P(merging)->rs.path.pts, ctx->transform, ctx->roundness, exps)) {
-            P(merging)->update(RenderUpdateFlag::Path);
+        _draw(parent, ctx);
+        if (path->pathset(frameNo, P(ctx->merging)->rs.path.cmds, P(ctx->merging)->rs.path.pts, ctx->transform, ctx->roundness, exps)) {
+            P(ctx->merging)->update(RenderUpdateFlag::Path);
         }
     }
 }
@@ -673,7 +698,7 @@ static void _updateStar(LottieGroup* parent, LottiePolyStar* star, Matrix* trans
     auto partialPointAmount = ptsCnt - floorf(ptsCnt);
     auto longSegment = false;
     auto numPoints = size_t(ceilf(ptsCnt) * 2);
-    auto direction = (star->direction == 0) ? 1.0f : -1.0f;
+    auto direction = star->clockwise ? 1.0f : -1.0f;
     auto hasRoundness = false;
     bool roundedCorner = (roundness > ROUNDNESS_EPSILON) && (mathZero(innerRoundness) || mathZero(outerRoundness));
     //TODO: we can use PathCommand / PathCoord directly.
@@ -724,10 +749,10 @@ static void _updateStar(LottieGroup* parent, LottiePolyStar* star, Matrix* trans
         y = radius * sinf(angle);
 
         if (hasRoundness) {
-            auto cp1Theta = (atan2f(previousY, previousX) - MATH_PI2 * direction);
+            auto cp1Theta = (mathAtan2(previousY, previousX) - MATH_PI2 * direction);
             auto cp1Dx = cosf(cp1Theta);
             auto cp1Dy = sinf(cp1Theta);
-            auto cp2Theta = (atan2f(y, x) - MATH_PI2 * direction);
+            auto cp2Theta = (mathAtan2(y, x) - MATH_PI2 * direction);
             auto cp2Dx = cosf(cp2Theta);
             auto cp2Dy = sinf(cp2Theta);
 
@@ -783,7 +808,7 @@ static void _updatePolygon(LottieGroup* parent, LottiePolyStar* star, Matrix* tr
 
     auto angle = mathDeg2Rad(-90.0f);
     auto anglePerPoint = 2.0f * MATH_PI / float(ptsCnt);
-    auto direction = (star->direction == 0) ? 1.0f : -1.0f;
+    auto direction = star->clockwise ? 1.0f : -1.0f;
     auto hasRoundness = false;
     auto x = radius * cosf(angle);
     auto y = radius * sinf(angle);
@@ -810,10 +835,10 @@ static void _updatePolygon(LottieGroup* parent, LottiePolyStar* star, Matrix* tr
         y = (radius * sinf(angle));
 
         if (hasRoundness) {
-            auto cp1Theta = atan2f(previousY, previousX) - MATH_PI2 * direction;
+            auto cp1Theta = mathAtan2(previousY, previousX) - MATH_PI2 * direction;
             auto cp1Dx = cosf(cp1Theta);
             auto cp1Dy = sinf(cp1Theta);
-            auto cp2Theta = atan2f(y, x) - MATH_PI2 * direction;
+            auto cp2Theta = mathAtan2(y, x) - MATH_PI2 * direction;
             auto cp2Dx = cosf(cp2Theta);
             auto cp2Dy = sinf(cp2Theta);
 
@@ -863,10 +888,10 @@ static void _updatePolystar(LottieGroup* parent, LottieObject** child, float fra
         else _updatePolygon(parent, star, identity  ? nullptr : &matrix, frameNo, p.get(), exps);
         _repeat(parent, std::move(p), ctx);
     } else {
-        auto merging = _draw(parent, ctx);
-        if (star->type == LottiePolyStar::Star) _updateStar(parent, star, identity ? nullptr : &matrix, ctx->roundness, frameNo, merging, exps);
-        else _updatePolygon(parent, star, identity  ? nullptr : &matrix, frameNo, merging, exps);
-        P(merging)->update(RenderUpdateFlag::Path);
+        _draw(parent, ctx);
+        if (star->type == LottiePolyStar::Star) _updateStar(parent, star, identity ? nullptr : &matrix, ctx->roundness, frameNo, ctx->merging, exps);
+        else _updatePolygon(parent, star, identity  ? nullptr : &matrix, frameNo, ctx->merging, exps);
+        P(ctx->merging)->update(RenderUpdateFlag::Path);
     }
 }
 
@@ -1019,10 +1044,8 @@ static void _updatePrecomp(LottieLayer* precomp, float frameNo, LottieExpression
 
 static void _updateSolid(LottieLayer* layer)
 {
-    auto shape = Shape::gen();
-    shape->appendRect(0, 0, static_cast<float>(layer->w), static_cast<float>(layer->h));
-    shape->fill(layer->color.rgb[0], layer->color.rgb[1], layer->color.rgb[2], layer->cache.opacity);
-    layer->scene->push(std::move(shape));
+    layer->solidFill->opacity(layer->cache.opacity);
+    layer->scene->push(cast(layer->solidFill));
 }
 
 
@@ -1042,6 +1065,7 @@ static void _updateImage(LottieGroup* layer)
         TaskScheduler::async(true);
 
         PP(image->picture)->ref();
+        image->picture->size(image->width, image->height);
     }
 
     if (image->refCnt == 1) layer->scene->push(tvg::cast(image->picture));
@@ -1058,12 +1082,13 @@ static void _updateText(LottieLayer* layer, float frameNo)
     if (!p || !text->font) return;
 
     auto scale = doc.size * 0.01f;
-    float spacing = text->spacing(frameNo) / scale;
     Point cursor = {0.0f, 0.0f};
     auto scene = Scene::gen();
     int line = 0;
 
     //text string
+    int idx = 0;
+    auto totalChars = strlen(p);
     while (true) {
         //TODO: remove nested scenes.
         //end of text, new line of the cursor position
@@ -1115,19 +1140,58 @@ static void _updateText(LottieLayer* layer, float frameNo)
                     shape->stroke(doc.stroke.color.rgb[0], doc.stroke.color.rgb[1], doc.stroke.color.rgb[2]);
                 }
 
+                //text range process
+                for (auto s = text->ranges.begin(); s < text->ranges.end(); ++s) {
+                    float divisor = (*s)->rangeUnit == LottieTextRange::Unit::Percent ? (100.0f / totalChars) : 1;
+                    auto offset = (*s)->offset(frameNo) / divisor;
+                    auto start = round((*s)->start(frameNo) / divisor) + offset;
+                    auto end = round((*s)->end(frameNo) / divisor) + offset;
+
+                    if (start > end) std::swap(start, end);
+
+                    if (idx < start || idx >= end) continue;
+                    auto matrix = shape->transform();
+
+                    shape->opacity((*s)->style.opacity(frameNo));
+
+                    auto color = (*s)->style.fillColor(frameNo);
+                    shape->fill(color.rgb[0], color.rgb[1], color.rgb[2], (*s)->style.fillOpacity(frameNo));
+
+                    mathRotate(&matrix, (*s)->style.rotation(frameNo));
+
+                    auto glyphScale = (*s)->style.scale(frameNo) * 0.01f;
+                    mathScale(&matrix, glyphScale.x, glyphScale.y);
+
+                    auto position = (*s)->style.position(frameNo);
+                    mathTranslate(&matrix, position.x, position.y);
+
+                    shape->transform(matrix);
+
+                    if (doc.stroke.render) {
+                        auto strokeColor = (*s)->style.strokeColor(frameNo);
+                        shape->stroke((*s)->style.strokeWidth(frameNo) / scale);
+                        shape->stroke(strokeColor.rgb[0], strokeColor.rgb[1], strokeColor.rgb[2], (*s)->style.strokeOpacity(frameNo));
+                    }
+                    cursor.x += (*s)->style.letterSpacing(frameNo);
+                }
+
                 scene->push(std::move(shape));
 
                 p += glyph->len;
+                idx += glyph->len;
 
                 //advance the cursor position horizontally
-                cursor.x += glyph->width + spacing + doc.tracking;
+                cursor.x += glyph->width + doc.tracking;
 
                 found = true;
                 break;
             }
         }
 
-        if (!found) ++p;
+        if (!found) {
+            ++p;
+            ++idx;
+        }
     }
 }
 
