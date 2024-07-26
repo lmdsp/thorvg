@@ -30,7 +30,7 @@ function(tvg_assign_source_groups file_list)
     endforeach()
 endfunction()
 
-if(FLUX_BUILD_THORVG)
+if(FLUX_USE_THORVG)
     file(GLOB_RECURSE ThorVG_SRC
         src/loaders/*.cpp
         src/loaders/*.hpp
