@@ -51,7 +51,6 @@ private:
     StrokeJoin getStrokeJoin();
     CompositeMethod getMaskMethod(bool inversed);
     LottieInterpolator* getInterpolator(const char* key, Point& in, Point& out);
-    uint8_t getDirection();
 
     void getInperpolatorPoint(Point& pt);
     void getPathSet(LottiePathSet& path);
@@ -75,7 +74,7 @@ private:
     LottieObject* parseObject();
     LottieObject* parseAsset();
     LottieImage* parseImage(const char* data, const char* subPath, bool embedded, float width, float height);
-    LottieLayer* parseLayer();
+    LottieLayer* parseLayer(LottieLayer* precomp);
     LottieObject* parseGroup();
     LottieRect* parseRect();
     LottieEllipse* parseEllipse();
@@ -87,13 +86,14 @@ private:
     LottiePolyStar* parsePolyStar();
     LottieRoundedCorner* parseRoundedCorner();
     LottieGradientFill* parseGradientFill();
-    LottieLayer* parseLayers();
+    LottieLayer* parseLayers(LottieLayer* root);
     LottieMask* parseMask();
     LottieTrimpath* parseTrimpath();
     LottieRepeater* parseRepeater();
     LottieFont* parseFont();
     LottieMarker* parseMarker();
 
+    bool parseDirection(LottieShape* shape, const char* key);
     bool parseCommon(LottieObject* obj, const char* key);
     void parseObject(Array<LottieObject*>& parent);
     void parseShapes(Array<LottieObject*>& parent);

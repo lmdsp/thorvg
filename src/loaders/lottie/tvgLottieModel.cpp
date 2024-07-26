@@ -23,6 +23,7 @@
 #include "tvgMath.h"
 #include "tvgPaint.h"
 #include "tvgFill.h"
+#include "tvgTaskScheduler.h"
 #include "tvgLottieModel.h"
 
 
@@ -111,11 +112,29 @@ void LottieSlot::assign(LottieObject* target)
 
 LottieImage::~LottieImage()
 {
-    if (picture && PP(picture)->unref() == 0) {
-        delete(picture);
-    }
     free(b64Data);
     free(mimeType);
+}
+
+
+void LottieImage::prepare()
+{
+    LottieObject::type = LottieObject::Image;
+
+    auto picture = Picture::gen().release();
+
+    //force to load a picture on the same thread
+    TaskScheduler::async(false);
+
+    if (size > 0) picture->load((const char*)b64Data, size, mimeType, false);
+    else picture->load(path);
+
+    TaskScheduler::async(true);
+
+    picture->size(width, height);
+    PP(picture)->ref();
+
+    pooler.push(picture);
 }
 
 
@@ -123,6 +142,7 @@ void LottieTrimpath::segment(float frameNo, float& start, float& end, LottieExpr
 {
     start = this->start(frameNo, exps) * 0.01f;
     end = this->end(frameNo, exps) * 0.01f;
+
     auto o = fmodf(this->offset(frameNo, exps), 360.0f) / 360.0f;  //0 ~ 1
 
     auto diff = fabs(start - end);
@@ -267,6 +287,16 @@ Fill* LottieGradient::fill(float frameNo, LottieExpressions* exps)
 }
 
 
+LottieGroup::LottieGroup()
+{
+    reqFragment = false;
+    buildDone = false;
+    trimpath = false;
+    visible = false;
+    allowMerge = true;
+}
+
+
 void LottieGroup::prepare(LottieObject::Type type)
 {
     LottieObject::type = type;
@@ -284,6 +314,24 @@ void LottieGroup::prepare(LottieObject::Type type)
         /* Figure out if this group is a simple path drawing.
            In that case, the rendering context can be sharable with the parent's. */
         if (allowMerge && (child->type == LottieObject::Group || !child->mergeable())) allowMerge = false;
+
+        //Figure out this group has visible contents
+        switch (child->type) {
+            case LottieObject::Group: {
+                visible |= static_cast<LottieGroup*>(child)->visible;
+                break;
+            }
+            case LottieObject::Rect:
+            case LottieObject::Ellipse:
+            case LottieObject::Path:
+            case LottieObject::Polystar:
+            case LottieObject::Image:
+            case LottieObject::Text: {
+                visible = true;
+                break;
+            }
+            default: break;
+        }
 
         if (reqFragment) continue;
 
@@ -331,9 +379,6 @@ LottieLayer::~LottieLayer()
         delete(*m);
     }
 
-    //Remove tvg render paints
-    if (solidFill && PP(solidFill)->unref() == 0) delete(solidFill);
-
     delete(transform);
     free(name);
 }
@@ -350,19 +395,26 @@ void LottieLayer::prepare(RGB24* color)
         return;
     }
 
+    //prepare the viewport clipper
+    if (type == LottieLayer::Precomp) {
+        auto clipper = Shape::gen().release();
+        clipper->appendRect(0.0f, 0.0f, w, h);
+        PP(clipper)->ref();
+        pooler.push(clipper);
     //prepare solid fill in advance if it is a layer type.
-    if (color && type == LottieLayer::Solid) {
-        solidFill = Shape::gen().release();
+    } else if (color && type == LottieLayer::Solid) {
+        auto solidFill = Shape::gen().release();
         solidFill->appendRect(0, 0, static_cast<float>(w), static_cast<float>(h));
         solidFill->fill(color->rgb[0], color->rgb[1], color->rgb[2]);
         PP(solidFill)->ref();
+        pooler.push(solidFill);
     }
 
     LottieGroup::prepare(LottieObject::Layer);
 }
 
 
-float LottieLayer::remap(float frameNo, LottieExpressions* exp)
+float LottieLayer::remap(LottieComposition* comp, float frameNo, LottieExpressions* exp)
 {
     if (timeRemap.frames || timeRemap.value) {
         frameNo = comp->frameAtTime(timeRemap(frameNo, exp));

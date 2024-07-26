@@ -187,7 +187,7 @@ void LottieParser::getValue(TextDocument& doc)
 {
     enterObject();
     while (auto key = nextObjectKey()) {
-        if (KEY_AS("s")) doc.size = getFloat();
+        if (KEY_AS("s")) doc.size = getFloat() * 0.01f;
         else if (KEY_AS("f")) doc.name = getStringCopy();
         else if (KEY_AS("t")) doc.text = getStringCopy();
         else if (KEY_AS("j")) doc.justify = getInt();
@@ -532,6 +532,18 @@ bool LottieParser::parseCommon(LottieObject* obj, const char* key)
 }
 
 
+bool LottieParser::parseDirection(LottieShape* shape, const char* key)
+{
+    if (KEY_AS("d")) {
+        if (getInt() == 3) {
+            shape->clockwise = false;       //default is true
+        }
+        return true;
+    }
+    return false;
+}
+
+
 LottieRect* LottieParser::parseRect()
 {
     auto rect = new LottieRect;
@@ -543,7 +555,7 @@ LottieRect* LottieParser::parseRect()
         else if (KEY_AS("s")) parseProperty<LottieProperty::Type::Point>(rect->size);
         else if (KEY_AS("p")) parseProperty<LottieProperty::Type::Position>(rect->position);
         else if (KEY_AS("r")) parseProperty<LottieProperty::Type::Float>(rect->radius);
-        else if (KEY_AS("d")) rect->clockwise = getDirection();
+        else if (parseDirection(rect, key)) continue;
         else skip(key);
     }
     rect->prepare();
@@ -561,7 +573,7 @@ LottieEllipse* LottieParser::parseEllipse()
         if (parseCommon(ellipse, key)) continue;
         else if (KEY_AS("p")) parseProperty<LottieProperty::Type::Position>(ellipse->position);
         else if (KEY_AS("s")) parseProperty<LottieProperty::Type::Point>(ellipse->size);
-        else if (KEY_AS("d")) ellipse->clockwise = getDirection();
+        else if (parseDirection(ellipse, key)) continue;
         else skip(key);
     }
     ellipse->prepare();
@@ -698,7 +710,7 @@ LottiePath* LottieParser::parsePath()
     while (auto key = nextObjectKey()) {
         if (parseCommon(path, key)) continue;
         else if (KEY_AS("ks")) getPathSet(path->pathset);
-        else if (KEY_AS("d")) path->clockwise = getDirection();
+        else if (parseDirection(path, key)) continue;
         else skip(key);
     }
     path->prepare();
@@ -722,7 +734,7 @@ LottiePolyStar* LottieParser::parsePolyStar()
         else if (KEY_AS("os")) parseProperty<LottieProperty::Type::Float>(star->outerRoundness);
         else if (KEY_AS("r")) parseProperty<LottieProperty::Type::Float>(star->rotation);
         else if (KEY_AS("sy")) star->type = (LottiePolyStar::Type) getInt();
-        else if (KEY_AS("d")) star->clockwise = getDirection();
+        else if (parseDirection(star, key)) continue;
         else skip(key);
     }
     star->prepare();
@@ -953,7 +965,7 @@ LottieObject* LottieParser::parseAsset()
                 id = _int2str(getInt());
             }
         }
-        else if (KEY_AS("layers")) obj = parseLayers();
+        else if (KEY_AS("layers")) obj = parseLayers(comp->root);
         else if (KEY_AS("u")) subPath = getString();
         else if (KEY_AS("p")) data = getString();
         else if (KEY_AS("w")) width = getFloat();
@@ -1083,14 +1095,6 @@ LottieObject* LottieParser::parseGroup()
 void LottieParser::parseTimeRemap(LottieLayer* layer)
 {
     parseProperty<LottieProperty::Type::Float>(layer->timeRemap);
-}
-
-
-uint8_t LottieParser::getDirection()
-{
-    auto v = getInt();
-    if (v == 3) return false;
-    return true;
 }
 
 
@@ -1232,11 +1236,11 @@ void LottieParser::parseMasks(LottieLayer* layer)
 }
 
 
-LottieLayer* LottieParser::parseLayer()
+LottieLayer* LottieParser::parseLayer(LottieLayer* precomp)
 {
     auto layer = new LottieLayer;
 
-    layer->comp = comp;
+    layer->comp = precomp;
     context.layer = layer;
 
     auto ddd = false;
@@ -1291,20 +1295,20 @@ LottieLayer* LottieParser::parseLayer()
 }
 
 
-LottieLayer* LottieParser::parseLayers()
+LottieLayer* LottieParser::parseLayers(LottieLayer* root)
 {
-    auto root = new LottieLayer;
+    auto precomp = new LottieLayer;
 
-    root->type = LottieLayer::Precomp;
-    root->comp = comp;
+    precomp->type = LottieLayer::Precomp;
+    precomp->comp = root;
 
     enterArray();
     while (nextArrayValue()) {
-        root->children.push(parseLayer());
+        precomp->children.push(parseLayer(precomp));
     }
 
-    root->prepare();
-    return root;
+    precomp->prepare();
+    return precomp;
 }
 
 
@@ -1392,16 +1396,19 @@ bool LottieParser::parse()
 
     Array<LottieGlyph*> glyphes;
 
+    auto startFrame = 0.0f;
+    auto endFrame = 0.0f;
+
     while (auto key = nextObjectKey()) {
         if (KEY_AS("v")) comp->version = getStringCopy();
         else if (KEY_AS("fr")) comp->frameRate = getFloat();
-        else if (KEY_AS("ip")) comp->startFrame = getFloat();
-        else if (KEY_AS("op")) comp->endFrame = getFloat();
+        else if (KEY_AS("ip")) startFrame = getFloat();
+        else if (KEY_AS("op")) endFrame = getFloat();
         else if (KEY_AS("w")) comp->w = getFloat();
         else if (KEY_AS("h")) comp->h = getFloat();
         else if (KEY_AS("nm")) comp->name = getStringCopy();
         else if (KEY_AS("assets")) parseAssets();
-        else if (KEY_AS("layers")) comp->root = parseLayers();
+        else if (KEY_AS("layers")) comp->root = parseLayers(comp->root);
         else if (KEY_AS("fonts")) parseFonts();
         else if (KEY_AS("chars")) parseChars(glyphes);
         else if (KEY_AS("markers")) parseMarkers();
@@ -1413,8 +1420,8 @@ bool LottieParser::parse()
         return false;
     }
 
-    comp->root->inFrame = comp->startFrame;
-    comp->root->outFrame = comp->endFrame;
+    comp->root->inFrame = startFrame;
+    comp->root->outFrame = endFrame;
 
     postProcess(glyphes);
 
