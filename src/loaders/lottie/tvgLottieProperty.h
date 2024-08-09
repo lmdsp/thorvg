@@ -24,10 +24,9 @@
 #define _TVG_LOTTIE_PROPERTY_H_
 
 #include <algorithm>
-#include "tvgCommon.h"
-#include "tvgArray.h"
 #include "tvgMath.h"
 #include "tvgLines.h"
+#include "tvgLottieCommon.h"
 #include "tvgLottieInterpolator.h"
 #include "tvgLottieExpressions.h"
 
@@ -36,68 +35,6 @@
 struct LottieFont;
 struct LottieLayer;
 struct LottieObject;
-
-
-struct PathSet
-{
-    Point* pts = nullptr;
-    PathCommand* cmds = nullptr;
-    uint16_t ptsCnt = 0;
-    uint16_t cmdsCnt = 0;
-};
-
-
-struct RGB24
-{
-    int32_t rgb[3];
-};
-
-
-struct ColorStop
-{
-    Fill::ColorStop* data = nullptr;
-    Array<float>* input = nullptr;
-};
-
-
-struct TextDocument
-{
-    char* text = nullptr;
-    float height;
-    float shift;
-    RGB24 color;
-    struct {
-        Point pos;
-        Point size;
-    } bbox;
-    struct {
-        RGB24 color;
-        float width;
-        bool render = false;
-    } stroke;
-    char* name = nullptr;
-    float size;
-    float tracking = 0.0f;
-    uint8_t justify;
-};
-
-
-static inline RGB24 operator-(const RGB24& lhs, const RGB24& rhs)
-{
-    return {lhs.rgb[0] - rhs.rgb[0], lhs.rgb[1] - rhs.rgb[1], lhs.rgb[2] - rhs.rgb[2]};
-}
-
-
-static inline RGB24 operator+(const RGB24& lhs, const RGB24& rhs)
-{
-    return {lhs.rgb[0] + rhs.rgb[0], lhs.rgb[1] + rhs.rgb[1], lhs.rgb[2] + rhs.rgb[2]};
-}
-
-
-static inline RGB24 operator*(const RGB24& lhs, float rhs)
-{
-    return {(int32_t)nearbyint(lhs.rgb[0] * rhs), (int32_t)nearbyint(lhs.rgb[1] * rhs), (int32_t)nearbyint(lhs.rgb[2] * rhs)};
-}
 
 
 template<typename T>
@@ -178,11 +115,13 @@ struct LottieVectorFrame
 struct LottieProperty
 {
     enum class Type : uint8_t { Point = 0, Float, Opacity, Color, PathSet, ColorStop, Position, TextDoc, Invalid };
-    virtual ~LottieProperty() {}
 
     LottieExpression* exp = nullptr;
+    Type type;
+    uint8_t ix;  //property index
 
     //TODO: Apply common bodies?
+    virtual ~LottieProperty() {}
     virtual uint32_t frameCnt() = 0;
     virtual uint32_t nearest(float time) = 0;
     virtual float frameNo(int32_t key) = 0;
@@ -198,16 +137,13 @@ struct LottieExpression
     LottieLayer* layer;
     LottieObject* object;
     LottieProperty* property;
-    LottieProperty::Type type;
-
-    bool enabled;
 
     struct {
         uint32_t key = 0;      //the keyframe number repeating to
         float in = FLT_MAX;    //looping duration in frame number
         LoopMode mode = None;
     } loop;
-;
+
     ~LottieExpression()
     {
         free(code);
@@ -461,7 +397,7 @@ struct LottieGenericProperty : LottieProperty
 
     T operator()(float frameNo, LottieExpressions* exps)
     {
-        if (exps && (exp && exp->enabled)) {
+        if (exps && exp) {
             T out{};
             if (exp->loop.mode != LottieExpression::LoopMode::None) frameNo = _loop(frames, frameNo, exp);
             if (exps->result<LottieGenericProperty<T>>(frameNo, out, exp)) return out;
@@ -606,7 +542,7 @@ struct LottiePathSet : LottieProperty
 
     bool operator()(float frameNo, Array<PathCommand>& cmds, Array<Point>& pts, Matrix* transform, float roundness, LottieExpressions* exps)
     {
-        if (exps && (exp && exp->enabled)) {
+        if (exps && exp) {
             if (exp->loop.mode != LottieExpression::LoopMode::None) frameNo = _loop(frames, frameNo, exp);
             if (exps->result<LottiePathSet>(frameNo, cmds, pts, transform, roundness, exp)) return true;
         }
@@ -687,7 +623,7 @@ struct LottieColorStop : LottieProperty
 
     Result operator()(float frameNo, Fill* fill, LottieExpressions* exps)
     {
-        if (exps && (exp && exp->enabled)) {
+        if (exps && exp) {
             if (exp->loop.mode != LottieExpression::LoopMode::None) frameNo = _loop(frames, frameNo, exp);
             if (exps->result<LottieColorStop>(frameNo, fill, exp)) return Result::Success;
         }
@@ -823,7 +759,7 @@ struct LottiePosition : LottieProperty
     Point operator()(float frameNo, LottieExpressions* exps)
     {
         Point out{};
-        if (exps && (exp && exp->enabled)) {
+        if (exps && exp) {
             if (exp->loop.mode != LottieExpression::LoopMode::None) frameNo = _loop(frames, frameNo, exp);
             if (exps->result<LottiePosition>(frameNo, out, exp)) return out;
         }

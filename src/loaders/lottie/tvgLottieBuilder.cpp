@@ -175,7 +175,7 @@ static bool _updateTransform(LottieTransform* transform, float frameNo, bool aut
     }
 
     if (transform->coords) {
-        mathTranslate(&matrix, transform->coords->x(frameNo), transform->coords->y(frameNo));
+        mathTranslate(&matrix, transform->coords->x(frameNo, exps), transform->coords->y(frameNo, exps));
     } else {
         auto position = transform->position(frameNo, exps);
         mathTranslate(&matrix, position.x, position.y);
@@ -252,8 +252,7 @@ static void _updateTransform(LottieGroup* parent, LottieObject** child, float fr
     Matrix matrix;
     if (!_updateTransform(transform, frameNo, false, matrix, opacity, exps)) return;
 
-    auto pmatrix = PP(ctx->propagator)->transform();
-    ctx->propagator->transform(pmatrix ? (*pmatrix * matrix) : matrix);
+    ctx->propagator->transform(PP(ctx->propagator)->transform() * matrix);
     ctx->propagator->opacity(MULTIPLY(opacity, PP(ctx->propagator)->opacity));
 
     //FIXME: preserve the stroke width. too workaround, need a better design.
@@ -350,7 +349,7 @@ static void _updateSolidFill(TVG_UNUSED LottieGroup* parent, LottieObject** chil
     auto fill = static_cast<LottieSolidFill*>(*child);
 
     ctx->merging = nullptr;
-    auto color = fill->color(frameNo);
+    auto color = fill->color(frameNo, exps);
     ctx->propagator->fill(color.rgb[0], color.rgb[1], color.rgb[2], fill->opacity(frameNo, exps));
     ctx->propagator->fill(fill->rule);
 
@@ -418,14 +417,9 @@ static void _repeat(LottieGroup* parent, Shape* path, RenderContext* ctx)
                 mathTranslateR(&m, -repeater->anchor.x, -repeater->anchor.y);
                 m = repeater->transform * m;
 
-                auto pm = PP(shape)->transform();
-                if (pm) {
-                    Matrix inverse;
-                    mathInverse(&repeater->transform, &inverse);
-                    *pm = inverse * *pm;
-                }
-
-                shape->transform(pm ? m * *pm : m);
+                Matrix inv;
+                mathInverse(&repeater->transform, &inv);
+                shape->transform(m * (inv * PP(shape)->transform()));
                 shapes.push(shape);
             }
         }
@@ -928,8 +922,7 @@ static void _updateRepeater(TVG_UNUSED LottieGroup* parent, LottieObject** child
 
     RenderRepeater r;
     r.cnt = static_cast<int>(repeater->copies(frameNo, exps));
-    if (auto tr = PP(ctx->propagator)->transform()) r.transform = *tr;
-    else mathIdentity(&r.transform);
+    r.transform = PP(ctx->propagator)->transform();
     r.offset = repeater->offset(frameNo, exps);
     r.position = repeater->position(frameNo, exps);
     r.anchor = repeater->anchor(frameNo, exps);
@@ -1202,6 +1195,13 @@ static void _updateMaskings(LottieLayer* layer, float frameNo, LottieExpressions
 {
     if (layer->masks.count == 0) return;
 
+    //Introduce an intermediate scene for embracing the matte + masking
+    if (layer->matteTarget) {
+        auto scene = Scene::gen().release();
+        scene->push(cast(layer->scene));
+        layer->scene = scene;
+    }
+
     //Apply the base mask
     auto pMask = static_cast<LottieMask*>(layer->masks[0]);
     auto pMethod = pMask->method;
@@ -1277,17 +1277,14 @@ static void _updateLayer(LottieComposition* comp, Scene* scene, LottieLayer* lay
 
     //Prepare render data
     layer->scene = Scene::gen().release();
+    layer->scene->id = layer->id;
 
     //ignore opacity when Null layer?
     if (layer->type != LottieLayer::Null) layer->scene->opacity(layer->cache.opacity);
 
     layer->scene->transform(layer->cache.matrix);
 
-    if (layer->matteTarget && layer->masks.count > 0) TVGERR("LOTTIE", "FIXME: Matte + Masking??");
-
     if (!_updateMatte(comp, frameNo, scene, layer, exps)) return;
-
-    _updateMaskings(layer, frameNo, exps);
 
     switch (layer->type) {
         case LottieLayer::Precomp: {
@@ -1316,6 +1313,8 @@ static void _updateLayer(LottieComposition* comp, Scene* scene, LottieLayer* lay
             break;
         }
     }
+
+    _updateMaskings(layer, frameNo, exps);
 
     layer->scene->blend(layer->blendMethod);
 

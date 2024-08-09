@@ -165,7 +165,9 @@ enum class CompositeMethod
     AddMask,            ///< Combines the target and source objects pixels using target alpha. (T * TA) + (S * (255 - TA)) (Experimental API)
     SubtractMask,       ///< Subtracts the source color from the target color while considering their respective target alpha. (T * TA) - (S * (255 - TA)) (Experimental API)
     IntersectMask,      ///< Computes the result by taking the minimum value between the target alpha and the source alpha and multiplies it with the target color. (T * min(TA, SA)) (Experimental API)
-    DifferenceMask      ///< Calculates the absolute difference between the target color and the source color multiplied by the complement of the target alpha. abs(T - S * (255 - TA)) (Experimental API)
+    DifferenceMask,     ///< Calculates the absolute difference between the target color and the source color multiplied by the complement of the target alpha. abs(T - S * (255 - TA)) (Experimental API)
+    LightenMask,        ///< Where multiple masks intersect, the highest transparency value is used. (Experimental API)
+    DarkenMask          ///< Where multiple masks intersect, the lowest transparency value is used. (Experimental API)
 };
 
 
@@ -371,15 +373,16 @@ public:
     /**
      * @brief Gets the axis-aligned bounding box of the paint object.
      *
-     * In case @p transform is @c true, all object's transformations are applied first, and then the bounding box is established. Otherwise, the bounding box is determined before any transformations.
-     *
-     * @param[out] x The x coordinate of the upper left corner of the object.
-     * @param[out] y The y coordinate of the upper left corner of the object.
+     * @param[out] x The x-coordinate of the upper-left corner of the object.
+     * @param[out] y The y-coordinate of the upper-left corner of the object.
      * @param[out] w The width of the object.
      * @param[out] h The height of the object.
-     * @param[in] transformed If @c true, the paint's transformations are taken into account, otherwise they aren't.
+     * @param[in] transformed If @c true, the paint's transformations are taken into account in the scene it belongs to. Otherwise they aren't.
      *
+     * @note This is useful when you need to figure out the bounding box of the paint in the canvas space.
      * @note The bounding box doesn't indicate the actual drawing region. It's the smallest rectangle that encloses the object.
+     * @note If @p transformed is @c true, the paint needs to be pushed into a canvas and updated before this api is called.
+     * @see Canvas::update()
      */
     Result bounds(float* x, float* y, float* w, float* h, bool transformed) const noexcept;
 
@@ -427,6 +430,15 @@ public:
      * @return The type id of the Paint instance.
      */
     uint32_t identifier() const noexcept;
+
+    /**
+     * @brief Unique ID of this instance.
+     *
+     * This is reserved to specify an paint instance in a scene.
+     *
+     * @since Experimental API
+     */
+    uint32_t id = 0;
 
     _TVG_DECLARE_PRIVATE(Paint);
 };
@@ -675,7 +687,8 @@ public:
      * @param[in] x2 The horizontal coordinate of the second point used to determine the gradient bounds.
      * @param[in] y2 The vertical coordinate of the second point used to determine the gradient bounds.
      *
-     * @note In case the first and the second points are equal, an object filled with such a gradient fill is not rendered.
+     * @note In case the first and the second points are equal, an object is filled with a single color using the last color specified in the colorStops().
+     * @see Fill::colorStops()
      */
     Result linear(float x1, float y1, float x2, float y2) noexcept;
 
@@ -734,6 +747,8 @@ public:
      * @param[in] radius The radius of the bounding circle.
      *
      * @retval Result::InvalidArguments in case the @p radius value is zero or less.
+     *
+     * @note In case the @p radius is zero, an object is filled with a single color using the last color specified in the colorStops().
      */
     Result radial(float cx, float cy, float radius) noexcept;
 
@@ -990,7 +1005,7 @@ public:
     /**
      * @brief Sets the trim of the stroke along the defined path segment, allowing control over which part of the stroke is visible.
      *
-     * The values of the arguments @p begin, @p end, and @p offset are in the range of 0.0 to 1.0, representing the beginning of the path and the end, respectively.
+     * If the values of the arguments @p begin and @p end exceed the 0-1 range, they are wrapped around in a manner similar to angle wrapping, effectively treating the range as circular.
      *
      * @param[in] begin Specifies the start of the segment to display along the path.
      * @param[in] end Specifies the end of the segment to display along the path.
@@ -1271,6 +1286,21 @@ public:
      * @since 0.9
      */
     Result load(uint32_t* data, uint32_t w, uint32_t h, bool copy) noexcept;
+
+    /**
+     * @brief Retrieve a paint object from the Picture scene by its Unique ID.
+     *
+     * This function searches for a paint object within the Picture scene that matches the provided @p id.
+     *
+     * @param[in] id The Unique ID of the paint object.
+     *
+     * @return A pointer to the paint object that matches the given identifier, or @c nullptr if no matching paint object is found.
+     *
+     * @see Accessor::id()
+     *
+     * @note Experimental API
+     */
+    const Paint* paint(uint32_t id) noexcept;
 
     /**
      * @brief Sets or removes the triangle mesh to deform the image.
@@ -2045,17 +2075,36 @@ class TVG_API Accessor final
 public:
     ~Accessor();
 
+    TVG_DEPRECATED std::unique_ptr<Picture> set(std::unique_ptr<Picture> picture, std::function<bool(const Paint* paint)> func) noexcept;
+
     /**
      * @brief Set the access function for traversing the Picture scene tree nodes.
      *
      * @param[in] picture The picture node to traverse the internal scene-tree.
      * @param[in] func The callback function calling for every paint nodes of the Picture.
-     *
-     * @return Return the given @p picture instance.
+     * @param[in] data Data passed to the @p func as its argument.
      *
      * @note The bitmap based picture might not have the scene-tree.
+     *
+     * @note Experimental API
      */
-    std::unique_ptr<Picture> set(std::unique_ptr<Picture> picture, std::function<bool(const Paint* paint)> func) noexcept;
+    Result set(const Picture* picture, std::function<bool(const Paint* paint, void* data)> func, void* data) noexcept;
+
+    /**
+     * @brief Generate a unique ID (hash key) from a given name.
+     *
+     * This function computes a unique identifier value based on the provided string.
+     * You can use this to assign a unique ID to the Paint object.
+     *
+     * @param[in] name The input string to generate the unique identifier from.
+     *
+     * @return The generated unique identifier value.
+     *
+     * @see Paint::id
+     *
+     * @note Experimental API
+     */
+    static uint32_t id(const char* name) noexcept;
 
     /**
      * @brief Creates a new Accessor object.

@@ -34,7 +34,7 @@
 #define KEY_AS(name) !strcmp(key, name)
 
 
-static LottieExpression* _expression(char* code, LottieComposition* comp, LottieLayer* layer, LottieObject* object, LottieProperty* property, LottieProperty::Type type)
+static LottieExpression* _expression(char* code, LottieComposition* comp, LottieLayer* layer, LottieObject* object, LottieProperty* property)
 {
     if (!comp->expressions) comp->expressions = true;
 
@@ -44,8 +44,6 @@ static LottieExpression* _expression(char* code, LottieComposition* comp, Lottie
     inst->layer = layer;
     inst->object = object;
     inst->property = property;
-    inst->type = type;
-    inst->enabled = true;
 
     return inst;
 }
@@ -72,14 +70,8 @@ CompositeMethod LottieParser::getMaskMethod(bool inversed)
         case 's': return CompositeMethod::SubtractMask;
         case 'i': return CompositeMethod::IntersectMask;
         case 'f': return CompositeMethod::DifferenceMask;
-        case 'l': {
-            TVGLOG("LOTTIE", "Mask Lighten is not supported");
-            return CompositeMethod::None;
-        }
-        case 'd': {
-            TVGLOG("LOTTIE", "Mask Darken is not supported");
-            return CompositeMethod::None;
-        }
+        case 'l': return CompositeMethod::LightenMask;
+        case 'd': return CompositeMethod::DarkenMask;
         default: return CompositeMethod::None;
     }
 }
@@ -348,7 +340,7 @@ void LottieParser::getValue(RGB24& color)
 
     while (nextArrayValue()) {
         auto val = getFloat();
-        if (i < 3) color.rgb[i++] = (int32_t)nearbyint(val * 255.0f);
+        if (i < 3) color.rgb[i++] = REMAP255(val);
     }
 
     //TODO: color filter?
@@ -509,14 +501,16 @@ void LottieParser::parseProperty(T& prop, LottieObject* obj)
             for (auto slot = comp->slots.begin(); slot < comp->slots.end(); ++slot) {
                 if (strcmp((*slot)->sid, sid)) continue;
                 (*slot)->pairs.push({obj});
-                return;
+                break;
             }
             comp->slots.push(new LottieSlot(sid, obj, type));
-        } else if (!strcmp(key, "x")) {
-            prop.exp = _expression(getStringCopy(), comp, context.layer, context.parent, &prop, type);
-        }
-        else skip(key);
+        } else if (KEY_AS("x")) {
+            prop.exp = _expression(getStringCopy(), comp, context.layer, context.parent, &prop);
+        } else if (KEY_AS("ix")) {
+            prop.ix = getInt();
+        } else skip(key);
     }
+    prop.type = type;
 }
 
 
@@ -603,9 +597,10 @@ LottieTransform* LottieParser::parseTransform(bool ddd)
                 //check separateCoord to figure out whether "x(expression)" / "x(coord)"
                 else if (transform->coords && KEY_AS("x")) parseProperty<LottieProperty::Type::Float>(transform->coords->x);
                 else if (transform->coords && KEY_AS("y")) parseProperty<LottieProperty::Type::Float>(transform->coords->y);
-                else if (KEY_AS("x")) transform->position.exp = _expression(getStringCopy(), comp, context.layer, context.parent, &transform->position, LottieProperty::Type::Position);
+                else if (KEY_AS("x")) transform->position.exp = _expression(getStringCopy(), comp, context.layer, context.parent, &transform->position);
                 else skip(key);
             }
+            transform->position.type = LottieProperty::Type::Position;
         }
         else if (KEY_AS("a")) parseProperty<LottieProperty::Type::Point>(transform->anchor);
         else if (KEY_AS("s")) parseProperty<LottieProperty::Type::Point>(transform->scale);
@@ -696,10 +691,11 @@ void LottieParser::getPathSet(LottiePathSet& path)
             } else {
                 getValue(path.value);
             }
-        } else if (!strcmp(key, "x")) {
-            path.exp = _expression(getStringCopy(), comp, context.layer, context.parent, &path, LottieProperty::Type::PathSet);
+        } else if (KEY_AS("x")) {
+            path.exp = _expression(getStringCopy(), comp, context.layer, context.parent, &path);
         } else skip(key);
     }
+    path.type = LottieProperty::Type::PathSet;
 }
 
 

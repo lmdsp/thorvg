@@ -583,6 +583,13 @@ TVG_API Tvg_Result tvg_picture_get_size(const Tvg_Paint* paint, float* w, float*
 }
 
 
+TVG_API const Tvg_Paint* tvg_picture_get_paint(Tvg_Paint* paint, uint32_t id)
+{
+    if (!paint) return nullptr;
+    return (Tvg_Paint*) reinterpret_cast<Picture*>(paint)->paint(id);
+}
+
+
 /************************************************************************/
 /* Gradient API                                                         */
 /************************************************************************/
@@ -886,6 +893,16 @@ TVG_API Tvg_Result tvg_animation_del(Tvg_Animation* animation)
     if (!animation) return TVG_RESULT_INVALID_ARGUMENT;
     delete(reinterpret_cast<Animation*>(animation));
     return TVG_RESULT_SUCCESS;
+}
+
+
+/************************************************************************/
+/* Accessor API                                                         */
+/************************************************************************/
+
+TVG_API uint32_t tvg_accessor_generate_id(const char* name)
+{
+    return Accessor::id(name);
 }
 
 

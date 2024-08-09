@@ -934,12 +934,15 @@ TVG_API Tvg_Paint* tvg_paint_duplicate(Tvg_Paint* paint);
 * \param[out] y The y coordinate of the upper left corner of the object.
 * \param[out] w The width of the object.
 * \param[out] h The height of the object.
-* \param[in] transformed If @c true, the transformation of the paint is taken into account, otherwise it isn't.
+* \param[in] transformed If @c true, the paint's transformations are taken into account in the scene it belongs to. Otherwise they aren't.
 *
 * \return Tvg_Result enumeration.
 * \retval TVG_RESULT_INVALID_ARGUMENT An invalid Tvg_Paint pointer.
 *
+* \note This is useful when you need to figure out the bounding box of the paint in the canvas space.
 * \note The bounding box doesn't indicate the actual drawing region. It's the smallest rectangle that encloses the object.
+* \note If @p transformed is @c true, the paint needs to be pushed into a canvas and updated before this api is called.
+* \see tvg_canvas_update_paint()
 */
 TVG_API Tvg_Result tvg_paint_get_bounds(const Tvg_Paint* paint, float* x, float* y, float* w, float* h, bool transformed);
 
@@ -1485,7 +1488,7 @@ TVG_API Tvg_Result tvg_shape_get_stroke_miterlimit(const Tvg_Paint* paint, float
 /*!
 * \brief Sets the trim of the stroke along the defined path segment, allowing control over which part of the stroke is visible.
 *
-* The values of the arguments @p begin, @p end, and @p offset are in the range of 0.0 to 1.0, representing the beginning of the path and the end, respectively.
+* If the values of the arguments @p begin and @p end exceed the 0-1 range, they are wrapped around in a manner similar to angle wrapping, effectively treating the range as circular.
 *
 * \param[in] paint A Tvg_Paint pointer to the shape object.
 * \param[in] begin Specifies the start of the segment to display along the path.
@@ -1745,7 +1748,8 @@ TVG_API Tvg_Gradient* tvg_radial_gradient_new(void);
 * \return Tvg_Result enumeration.
 * \retval TVG_RESULT_INVALID_ARGUMENT An invalid Tvg_Gradient pointer.
 *
-* \note In case the first and the second points are equal, an object filled with such a gradient fill is not rendered.
+* \note In case the first and the second points are equal, an object is filled with a single color using the last color specified in the tvg_gradient_set_color_stops().
+* \see tvg_gradient_set_color_stops()
 */
 TVG_API Tvg_Result tvg_linear_gradient_set(Tvg_Gradient* grad, float x1, float y1, float x2, float y2);
 
@@ -1781,6 +1785,9 @@ TVG_API Tvg_Result tvg_linear_gradient_get(Tvg_Gradient* grad, float* x1, float*
 *
 * \return Tvg_Result enumeration.
 * \retval TVG_RESULT_INVALID_ARGUMENT An invalid Tvg_Gradient pointer or the @p radius value less than zero.
+*
+* \note In case the @p radius is zero, an object is filled with a single color using the last color specified in the specified in the tvg_gradient_set_color_stops().
+* \see tvg_gradient_set_color_stops()
 */
 TVG_API Tvg_Result tvg_radial_gradient_set(Tvg_Gradient* grad, float cx, float cy, float radius);
 
@@ -2027,6 +2034,22 @@ TVG_API Tvg_Result tvg_picture_set_size(Tvg_Paint* paint, float w, float h);
 * \retval TVG_RESULT_INVALID_ARGUMENT An invalid Tvg_Paint pointer.
 */
 TVG_API Tvg_Result tvg_picture_get_size(const Tvg_Paint* paint, float* w, float* h);
+
+
+/*!
+* \brief Retrieve a paint object from the Picture scene by its Unique ID.
+*
+* This function searches for a paint object within the Picture scene that matches the provided @p id.
+*
+* \param[in] paint A Tvg_Paint pointer to the picture object.
+* \param[in] id The Unique ID of the paint object.
+
+* \return A pointer to the paint object that matches the given identifier, or @c nullptr if no matching paint object is found.
+*
+* \see tvg_accessor_generate_id()
+* \note experimental API
+*/
+TVG_API const Tvg_Paint* tvg_picture_get_paint(Tvg_Paint* paint, uint32_t id);
 
 
 /** \} */   // end defgroup ThorVGCapi_Picture
@@ -2531,6 +2554,36 @@ TVG_API Tvg_Result tvg_animation_del(Tvg_Animation* animation);
 
 
 /** \} */   // end defgroup ThorVGCapi_Animation
+
+
+/**
+* \defgroup ThorVGCapi_Accesssor Accessor
+* \brief A module for manipulation of the scene tree
+*
+* This module helps to control the scene tree.
+* \{
+*/
+
+/************************************************************************/
+/* Accessor API                                                         */
+/************************************************************************/
+
+/*!
+* \brief Generate a unique ID (hash key) from a given name.
+*
+* This function computes a unique identifier value based on the provided string.
+* You can use this to assign a unique ID to the Paint object.
+*
+* \param[in] name The input string to generate the unique identifier from.
+*
+* \return The generated unique identifier value.
+*
+* \note Experimental API
+*/
+TVG_API uint32_t tvg_accessor_generate_id(const char* name);
+
+
+/** \} */   // end defgroup ThorVGCapi_Accessor
 
 
 /**
