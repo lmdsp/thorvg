@@ -1,3 +1,4 @@
+#include "src/loaders/lottie/tvgLottieModifier.cpp"
 #include "src/loaders/lottie/tvgLottieParserHandler.cpp"
 #include "src/loaders/lottie/tvgLottieParser.cpp"
 #include "src/loaders/raw/tvgRawLoader.cpp"
