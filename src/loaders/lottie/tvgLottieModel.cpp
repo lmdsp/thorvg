@@ -141,7 +141,9 @@ void LottieImage::prepare()
 void LottieTrimpath::segment(float frameNo, float& start, float& end, LottieExpressions* exps)
 {
     start = this->start(frameNo, exps) * 0.01f;
+    mathClamp(start, 0.0f, 1.0f);
     end = this->end(frameNo, exps) * 0.01f;
+    mathClamp(end, 0.0f, 1.0f);
 
     auto o = fmodf(this->offset(frameNo, exps), 360.0f) / 360.0f;  //0 ~ 1
 
@@ -157,6 +159,7 @@ void LottieTrimpath::segment(float frameNo, float& start, float& end, LottieExpr
         return;
     }
 
+    if (start > end) std::swap(start, end);
     start += o;
     end += o;
 }
@@ -400,14 +403,14 @@ void LottieLayer::prepare(RGB24* color)
         auto clipper = Shape::gen().release();
         clipper->appendRect(0.0f, 0.0f, w, h);
         PP(clipper)->ref();
-        pooler.push(clipper);
+        statical.pooler.push(clipper);
     //prepare solid fill in advance if it is a layer type.
     } else if (color && type == LottieLayer::Solid) {
         auto solidFill = Shape::gen().release();
         solidFill->appendRect(0, 0, static_cast<float>(w), static_cast<float>(h));
         solidFill->fill(color->rgb[0], color->rgb[1], color->rgb[2]);
         PP(solidFill)->ref();
-        pooler.push(solidFill);
+        statical.pooler.push(solidFill);
     }
 
     LottieGroup::prepare(LottieObject::Layer);

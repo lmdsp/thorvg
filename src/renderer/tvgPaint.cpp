@@ -225,8 +225,6 @@ bool Paint::Impl::render(RenderMethod* renderer)
 
     if (cmp) renderer->beginComposite(cmp, compData->method, compData->target->pImpl->opacity);
 
-    renderer->blend(blendMethod);
-
     bool ret;
     PAINT_METHOD(ret, render(renderer));
 
@@ -351,6 +349,26 @@ bool Paint::Impl::bounds(float* x, float* y, float* w, float* h, bool transforme
 }
 
 
+void Paint::Impl::reset()
+{
+    if (compData) {
+        if (P(compData->target)->unref() == 0) delete(compData->target);
+        free(compData);
+        compData = nullptr;
+    }
+    mathIdentity(&tr.m);
+    tr.degree = 0.0f;
+    tr.scale = 1.0f;
+    tr.overriding = false;
+
+    blendMethod = BlendMethod::Normal;
+    renderFlag = RenderUpdateFlag::None;
+    ctxFlag = ContextFlag::Invalid;
+    opacity = 255;
+    paint->id = 0;
+}
+
+
 /************************************************************************/
 /* External Class Implementation                                        */
 /************************************************************************/
@@ -421,6 +439,11 @@ Paint* Paint::duplicate() const noexcept
 
 Result Paint::composite(std::unique_ptr<Paint> target, CompositeMethod method) noexcept
 {
+    if (method == CompositeMethod::ClipPath && target && target->identifier() != TVG_CLASS_ID_SHAPE) {
+        TVGERR("RENDERER", "ClipPath only allows the Shape!");
+        return Result::NonSupport;
+    }
+
     auto p = target.release();
     if (pImpl->composite(this, p, method)) return Result::Success;
     delete(p);
@@ -463,7 +486,7 @@ uint32_t Paint::identifier() const noexcept
 }
 
 
-Result Paint::blend(BlendMethod method) const noexcept
+Result Paint::blend(BlendMethod method) noexcept
 {
     if (pImpl->blendMethod != method) {
         pImpl->blendMethod = method;

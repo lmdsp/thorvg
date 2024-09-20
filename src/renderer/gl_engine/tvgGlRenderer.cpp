@@ -233,9 +233,6 @@ const Surface* GlRenderer::mainSurface()
 
 bool GlRenderer::blend(TVG_UNUSED BlendMethod method)
 {
-    if (method != BlendMethod::Normal) {
-        return true;
-    }
     //TODO:
     return false;
 }
@@ -417,7 +414,7 @@ static GLuint _genTexture(Surface* image)
     return tex;
 }
 
-RenderData GlRenderer::prepare(Surface* image, const RenderMesh* mesh, RenderData data, const Matrix& transform, Array<RenderData>& clips, uint8_t opacity, RenderUpdateFlag flags)
+RenderData GlRenderer::prepare(Surface* image, RenderData data, const Matrix& transform, Array<RenderData>& clips, uint8_t opacity, RenderUpdateFlag flags)
 {
     if (flags == RenderUpdateFlag::None) return data;
 
@@ -433,25 +430,18 @@ RenderData GlRenderer::prepare(Surface* image, const RenderMesh* mesh, RenderDat
         sdata->texId = _genTexture(image);
         sdata->opacity = opacity;
         sdata->texColorSpace = image->cs;
-        sdata->texFlipY = (mesh && mesh->triangleCnt) ? 0 : 1;
+        sdata->texFlipY = 1;
         sdata->geometry = make_unique<GlGeometry>();
     }
 
     sdata->geometry->updateTransform(transform);
     sdata->geometry->setViewport(mViewport);
 
-    sdata->geometry->tesselate(image, mesh, flags);
+    sdata->geometry->tesselate(image, flags);
 
     if (!clips.empty()) sdata->clips.push(clips);
 
     return sdata;
-}
-
-
-RenderData GlRenderer::prepare(TVG_UNUSED const Array<RenderData>& scene, TVG_UNUSED RenderData data, TVG_UNUSED const Matrix& transform, TVG_UNUSED Array<RenderData>& clips, TVG_UNUSED uint8_t opacity, TVG_UNUSED RenderUpdateFlag flags)
-{
-    //TODO:
-    return nullptr;
 }
 
 
@@ -653,7 +643,7 @@ void GlRenderer::drawPrimitive(GlShape& sdata, uint8_t r, uint8_t g, uint8_t b, 
     a = MULTIPLY(a, sdata.opacity);
 
     if (flag & RenderUpdateFlag::Stroke) {
-        float strokeWidth = sdata.rshape->strokeWidth();
+        float strokeWidth = sdata.rshape->strokeWidth() * sdata.geometry->getTransformMatrix().e11;
         if (strokeWidth < MIN_GL_STROKE_WIDTH) {
             float alpha = strokeWidth / MIN_GL_STROKE_WIDTH;
             a = MULTIPLY(a, static_cast<uint8_t>(alpha * 255));

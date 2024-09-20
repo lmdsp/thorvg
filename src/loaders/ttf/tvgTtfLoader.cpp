@@ -209,12 +209,12 @@ void TtfLoader::clear()
 /************************************************************************/
 
 
-bool TtfLoader::resize(Paint* paint, float sx, TVG_UNUSED float sy)
+bool TtfLoader::transform(Paint* paint, float fontSize, bool italic)
 {
     if (!paint) return false;
     auto shift = 0.0f;
     auto dpi = 96.0f / 72.0f;   //dpi base?
-    scale = sx * dpi / reader.metrics.unitsPerEm;
+    scale = fontSize * dpi / reader.metrics.unitsPerEm;
     if (italic) shift = -scale * 0.18f;  //experimental decision.
     Matrix m = {scale, shift, -(shift * reader.metrics.minw), 0, scale, 0, 0, 0, 1};
     paint->transform(m);
@@ -258,11 +258,10 @@ bool TtfLoader::open(const char* data, uint32_t size, bool copy)
 }
 
 
-bool TtfLoader::request(Shape* shape, char* text, bool italic)
+bool TtfLoader::request(Shape* shape, char* text)
 {
     this->shape = shape;
     this->text = text;
-    this->italic = italic;
 
     return true;
 }
@@ -283,6 +282,7 @@ bool TtfLoader::read()
     Point offset = {0.0f, reader.metrics.hhea.ascent};
     Point kerning = {0.0f, 0.0f};
     auto lglyph = INVALID_GLYPH;
+    auto loadMinw = true;
 
     size_t idx = 0;
     while (code[idx] && idx < n) {
@@ -290,11 +290,14 @@ bool TtfLoader::read()
         if (rglyph != INVALID_GLYPH) {
             if (lglyph != INVALID_GLYPH) reader.kerning(lglyph, rglyph, kerning);
             if (!reader.convert(shape, gmetrics, offset, kerning, 1U)) break;
+            offset.x += (gmetrics.advanceWidth + kerning.x);
+            lglyph = rglyph;
+            //store the first glyph with outline min size for italic transform.
+            if (loadMinw && gmetrics.outline) {
+                reader.metrics.minw = gmetrics.minw;
+                loadMinw = false;
+            }
         }
-        offset.x += (gmetrics.advanceWidth + kerning.x);
-        lglyph = rglyph;
-        //store the first glyph min size for italic transform.
-        if (idx == 0) reader.metrics.minw = gmetrics.minw;
         ++idx;
     }
 

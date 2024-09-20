@@ -157,7 +157,7 @@ enum class FillRule
 enum class CompositeMethod
 {
     None = 0,           ///< No composition is applied.
-    ClipPath,           ///< The intersection of the source and the target is determined and only the resulting pixels from the source are rendered.
+    ClipPath,           ///< The intersection of the source and the target is determined and only the resulting pixels from the source are rendered. Note that ClipPath only supports the Shape type.
     AlphaMask,          ///< Alpha Masking using the compositing target's pixels as an alpha value.
     InvAlphaMask,       ///< Alpha Masking using the complement to the compositing target's pixels as an alpha value.
     LumaMask,           ///< Alpha Masking using the grayscale (0.2125R + 0.7154G + 0.0721*B) of the compositing target's pixels. @since 0.9
@@ -231,34 +231,6 @@ struct Matrix
     float e11, e12, e13;
     float e21, e22, e23;
     float e31, e32, e33;
-};
-
-
-/**
- * @brief A data structure representing a texture mesh vertex
- *
- * @param pt The vertex coordinate
- * @param uv The normalized texture coordinate in the range (0.0..1.0, 0.0..1.0)
- *
- * @note Experimental API
- */
-struct Vertex
-{
-   Point pt;
-   Point uv;
-};
-
-
-/**
- * @brief A data structure representing a triange in a texture mesh
- *
- * @param vertex The three vertices that make up the polygon
- *
- * @note Experimental API
- */
-struct Polygon
-{
-   Vertex vertex[3];
 };
 
 
@@ -363,7 +335,7 @@ public:
      *
      * @note Experimental API
      */
-    Result blend(BlendMethod method) const noexcept;
+    Result blend(BlendMethod method) noexcept;
 
     /**
      * @deprecated Use bounds(float* x, float* y, float* w, float* h, bool transformed) instead
@@ -414,9 +386,9 @@ public:
     CompositeMethod composite(const Paint** target) const noexcept;
 
     /**
-     * @brief Gets the blending method of the object.
+     * @brief Retrieves the current blending method applied to the paint object.
      *
-     * @return The blending method
+     * @return The currently set blending method.
      *
      * @note Experimental API
      */
@@ -1091,7 +1063,6 @@ public:
      * @param[out] b The blue color channel value in the range [0 ~ 255].
      * @param[out] a The alpha channel value in the range [0 ~ 255], where 0 is completely transparent and 255 is opaque.
      *
-     * @return Result::Success when succeed.
      */
     Result fillColor(uint8_t* r, uint8_t* g, uint8_t* b, uint8_t* a = nullptr) const noexcept;
 
@@ -1234,7 +1205,7 @@ public:
      * when the @p copy has @c false. This means that loading the same data again will not result in duplicate operations
      * for the sharable @p data. Instead, ThorVG will reuse the previously loaded picture data.
      *
-     * @param[in] data A pointer to a memory location where the content of the picture file is stored.
+     * @param[in] data A pointer to a memory location where the content of the picture file is stored. A null-terminated string is expected for non-binary data if @p copy is @c false.
      * @param[in] size The size in bytes of the memory occupied by the @p data.
      * @param[in] mimeType Mimetype or extension of data such as "jpg", "jpeg", "lottie", "svg", "svg+xml", "png", etc. In case an empty string or an unknown type is provided, the loaders will be tried one by one.
      * @param[in] copy If @c true the data are copied into the engine local buffer, otherwise they are not.
@@ -1271,7 +1242,7 @@ public:
     Result size(float* w, float* h) const noexcept;
 
     /**
-     * @brief Loads a raw data from a memory block with a given size.
+     * @brief Loads raw data in ARGB8888 format from a memory block of the given size.
      *
      * ThorVG efficiently caches the loaded data using the specified @p data address as a key
      * when the @p copy has @c false. This means that loading the same data again will not result in duplicate operations
@@ -1280,9 +1251,9 @@ public:
      * @param[in] data A pointer to a memory location where the content of the picture raw data is stored.
      * @param[in] w The width of the image @p data in pixels.
      * @param[in] h The height of the image @p data in pixels.
-     * @param[in] premultiplied If @c true, the given image data is alpha-premultiplied.
      * @param[in] copy If @c true the data are copied into the engine local buffer, otherwise they are not.
      *
+     * @note It expects premultiplied alpha data.
      * @since 0.9
      */
     Result load(uint32_t* data, uint32_t w, uint32_t h, bool copy) noexcept;
@@ -1301,41 +1272,6 @@ public:
      * @note Experimental API
      */
     const Paint* paint(uint32_t id) noexcept;
-
-    /**
-     * @brief Sets or removes the triangle mesh to deform the image.
-     *
-     * If a mesh is provided, the transform property of the Picture will apply to the triangle mesh, and the
-     * image data will be used as the texture.
-     *
-     * If @p triangles is @c nullptr, or @p triangleCnt is 0, the mesh will be removed.
-     *
-     * Only raster image types are supported at this time (png, jpg). Vector types like svg and tvg do not support.
-     * mesh deformation. However, if required you should be able to render a vector image to a raster image and then apply a mesh.
-     *
-     * @param[in] triangles An array of Polygons(triangles) that make up the mesh, or null to remove the mesh.
-     * @param[in] triangleCnt The number of Polygons(triangles) provided, or 0 to remove the mesh.
-     *
-     * @note The Polygons are copied internally, so modifying them after calling Mesh::mesh has no affect.
-     * @warning Please do not use it, this API is not official one. It could be modified in the next version.
-     *
-     * @note Experimental API
-     */
-    Result mesh(const Polygon* triangles, uint32_t triangleCnt) noexcept;
-
-    /**
-     * @brief Return the number of triangles in the mesh, and optionally get a pointer to the array of triangles in the mesh.
-     *
-     * @param[out] triangles Optional. A pointer to the array of Polygons used by this mesh.
-     *
-     * @return The number of polygons in the array.
-     *
-     * @note Modifying the triangles returned by this method will modify them directly within the mesh.
-     * @warning Please do not use it, this API is not official one. It could be modified in the next version.
-     *
-     * @note Experimental API
-     */
-    uint32_t mesh(const Polygon** triangles) const noexcept;
 
     /**
      * @brief Creates a new Picture object.
@@ -1484,8 +1420,6 @@ public:
      * @param[in] g The green color channel value in the range [0 ~ 255]. The default value is 0.
      * @param[in] b The blue color channel value in the range [0 ~ 255]. The default value is 0.
      *
-     * @retval Result::InsufficientCondition when the font has not been set up prior to this operation.
-     *
      * @see Text::font()
      *
      * @note Experimental API
@@ -1498,8 +1432,6 @@ public:
      * The parts of the text defined as inner are filled.
      *
      * @param[in] f The unique pointer to the gradient fill.
-     *
-     * @retval Result::InsufficientCondition when the font has not been set up prior to this operation.
      *
      * @note Either a solid color or a gradient fill is applied, depending on what was set as last.
      * @note Experimental API

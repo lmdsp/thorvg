@@ -98,13 +98,7 @@ RenderData WgRenderer::prepare(const RenderShape& rshape, RenderData data, const
 }
 
 
-RenderData WgRenderer::prepare(TVG_UNUSED const Array<RenderData>& scene, TVG_UNUSED RenderData data, TVG_UNUSED const Matrix& transform, TVG_UNUSED Array<RenderData>& clips, TVG_UNUSED uint8_t opacity, TVG_UNUSED RenderUpdateFlag flags)
-{
-    return nullptr;
-}
-
-
-RenderData WgRenderer::prepare(Surface* surface, const RenderMesh* mesh, RenderData data, const Matrix& transform, Array<RenderData>& clips, uint8_t opacity, RenderUpdateFlag flags)
+RenderData WgRenderer::prepare(Surface* surface, RenderData data, const Matrix& transform, Array<RenderData>& clips, uint8_t opacity, RenderUpdateFlag flags)
 {
     // get or create render data shape
     auto renderDataPicture = (WgRenderDataPicture*)data;
@@ -122,8 +116,7 @@ RenderData WgRenderer::prepare(Surface* surface, const RenderMesh* mesh, RenderD
     // update image data
     if (flags & (RenderUpdateFlag::Path | RenderUpdateFlag::Image)) {
         WgGeometryData geometryData;
-        if (mesh->triangleCnt == 0) geometryData.appendImageBox(surface->w, surface->h);
-        else geometryData.appendMesh(mesh);
+        geometryData.appendImageBox(surface->w, surface->h);
         renderDataPicture->meshData.release(mContext);
         renderDataPicture->meshData.update(mContext, &geometryData);
         renderDataPicture->imageData.update(mContext, surface);
@@ -241,10 +234,10 @@ bool WgRenderer::viewport(TVG_UNUSED const RenderRegion& vp)
 }
 
 
-bool WgRenderer::blend(TVG_UNUSED BlendMethod method)
+bool WgRenderer::blend(BlendMethod method)
 {
     mBlendMethod = method;
-    return false;
+    return true;
 }
 
 

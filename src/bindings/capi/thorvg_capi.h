@@ -138,7 +138,7 @@ typedef enum {
  */
 typedef enum {
     TVG_COMPOSITE_METHOD_NONE = 0,           ///< No composition is applied.
-    TVG_COMPOSITE_METHOD_CLIP_PATH,          ///< The intersection of the source and the target is determined and only the resulting pixels from the source are rendered.
+    TVG_COMPOSITE_METHOD_CLIP_PATH,          ///< The intersection of the source and the target is determined and only the resulting pixels from the source are rendered. Note that ClipPath only supports the Shape type.
     TVG_COMPOSITE_METHOD_ALPHA_MASK,         ///< The pixels of the source and the target are alpha blended. As a result, only the part of the source, which intersects with the target is visible.
     TVG_COMPOSITE_METHOD_INVERSE_ALPHA_MASK, ///< The pixels of the source and the complement to the target's pixels are alpha blended. As a result, only the part of the source which is not covered by the target is visible.
     TVG_COMPOSITE_METHOD_LUMA_MASK,          ///< The source pixels are converted to grayscale (luma value) and alpha blended with the target. As a result, only the part of the source which intersects with the target is visible. \since 0.9
@@ -1002,7 +1002,7 @@ TVG_API Tvg_Result tvg_paint_get_identifier(const Tvg_Paint* paint, Tvg_Identifi
  *
  * @note Experimental API
  */
-TVG_API Tvg_Result tvg_paint_set_blend_method(const Tvg_Paint* paint, Tvg_Blend_Method method);
+TVG_API Tvg_Result tvg_paint_set_blend_method(Tvg_Paint* paint, Tvg_Blend_Method method);
 
 
 /**
@@ -1993,7 +1993,7 @@ TVG_API Tvg_Result tvg_picture_load_raw(Tvg_Paint* paint, uint32_t *data, uint32
 * for the sharable @p data. Instead, ThorVG will reuse the previously loaded picture data.
 *
 * \param[in] paint A Tvg_Paint pointer to the picture object.
-* \param[in] data A pointer to a memory location where the content of the picture file is stored.
+* \param[in] data A pointer to a memory location where the content of the picture file is stored. A null-terminated string is expected for non-binary data if @p copy is @c false
 * \param[in] size The size in bytes of the memory occupied by the @p data.
 * \param[in] mimetype Mimetype or extension of data such as "jpg", "jpeg", "svg", "svg+xml", "lottie", "png", etc. In case an empty string or an unknown type is provided, the loaders will be tried one by one.
 * \param[in] copy If @c true the data are copied into the engine local buffer, otherwise they are not.
@@ -2201,7 +2201,6 @@ TVG_API Tvg_Result tvg_text_set_text(Tvg_Paint* paint, const char* text);
 *
 * \return Tvg_Result enumeration.
 * \retval TVG_RESULT_INVALID_ARGUMENT A \c nullptr passed as the \p paint argument.
-* \retval TVG_RESULT_INSUFFICIENT_CONDITION The font has not been set up prior to this operation.
 *
 * \note Either a solid color or a gradient fill is applied, depending on what was set as last.
 * \note Experimental API
@@ -2220,7 +2219,6 @@ TVG_API Tvg_Result tvg_text_set_fill_color(Tvg_Paint* paint, uint8_t r, uint8_t 
 * \return Tvg_Result enumeration.
 * \retval TVG_RESULT_INVALID_ARGUMENT A \c nullptr passed as the \p paint argument.
 * \retval TVG_RESULT_MEMORY_CORRUPTION An invalid Tvg_Gradient pointer.
-* \retval TVG_RESULT_INSUFFICIENT_CONDITION The font has not been set up prior to this operation.
 *
 * \note Either a solid color or a gradient fill is applied, depending on what was set as last.
 * \note Experimental API
@@ -2239,7 +2237,6 @@ TVG_API Tvg_Result tvg_text_set_linear_gradient(Tvg_Paint* paint, Tvg_Gradient* 
 * \return Tvg_Result enumeration.
 * \retval TVG_RESULT_INVALID_ARGUMENT A \c nullptr passed as the \p paint argument.
 * \retval TVG_RESULT_MEMORY_CORRUPTION An invalid Tvg_Gradient pointer.
-* \retval TVG_RESULT_INSUFFICIENT_CONDITION The font has not been set up prior to this operation.
 *
 * \note Either a solid color or a gradient fill is applied, depending on what was set as last.
 * \note Experimental API

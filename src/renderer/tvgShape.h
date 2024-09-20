@@ -54,10 +54,13 @@ struct Shape::Impl
         Compositor* cmp = nullptr;
         bool ret;
 
+        renderer->blend(shape->blend());
+
         if (needComp) {
             cmp = renderer->target(bounds(renderer), renderer->colorSpace());
             renderer->beginComposite(cmp, CompositeMethod::None, opacity);
         }
+
         ret = renderer->renderShape(rd);
         if (cmp) renderer->endComposite(cmp);
         return ret;
@@ -377,6 +380,22 @@ struct Shape::Impl
         else dup->rs.fill = nullptr;
 
         return shape;
+    }
+
+    void reset()
+    {
+        PP(shape)->reset();
+        rs.path.cmds.clear();
+        rs.path.pts.clear();
+
+        rs.color[3] = 0;
+        rs.rule = FillRule::Winding;
+
+        delete(rs.stroke);
+        rs.stroke = nullptr;
+
+        delete(rs.fill);
+        rs.fill = nullptr;
     }
 
     Iterator* iterator()

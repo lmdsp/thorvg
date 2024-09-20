@@ -73,6 +73,8 @@ bool Picture::Impl::needComposition(uint8_t opacity)
 bool Picture::Impl::render(RenderMethod* renderer)
 {
     bool ret = false;
+    renderer->blend(picture->blend());
+
     if (surface) return renderer->renderImage(rd);
     else if (paint) {
         Compositor* cmp = nullptr;
@@ -197,23 +199,6 @@ Result Picture::size(float* w, float* h) const noexcept
     if (w) *w = pImpl->w;
     if (h) *h = pImpl->h;
     return Result::Success;
-}
-
-
-Result Picture::mesh(const Polygon* triangles, uint32_t triangleCnt) noexcept
-{
-    if (!triangles && triangleCnt > 0) return Result::InvalidArguments;
-    if (triangles && triangleCnt == 0) return Result::InvalidArguments;
-
-    pImpl->mesh(triangles, triangleCnt);
-    return Result::Success;
-}
-
-
-uint32_t Picture::mesh(const Polygon** triangles) const noexcept
-{
-    if (triangles) *triangles = pImpl->rm.triangles;
-    return pImpl->rm.triangleCnt;
 }
 
 

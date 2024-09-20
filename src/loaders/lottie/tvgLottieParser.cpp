@@ -318,17 +318,22 @@ void LottieParser::getValue(float& val)
 }
 
 
-void LottieParser::getValue(Point& pt)
+bool LottieParser::getValue(Point& pt)
 {
+    auto type = peekType();
+    if (type == kNullType) return false;
+
     int i = 0;
     auto ptr = (float*)(&pt);
 
-    if (peekType() == kArrayType) enterArray();
+    if (type == kArrayType) enterArray();
 
     while (nextArrayValue()) {
         auto val = getFloat();
         if (i < 2) ptr[i++] = val;
     }
+
+    return true;
 }
 
 
@@ -370,14 +375,11 @@ void LottieParser::parseSlotProperty(T& prop)
 template<typename T>
 bool LottieParser::parseTangent(const char *key, LottieVectorFrame<T>& value)
 {
-    if (KEY_AS("ti")) {
-        value.hasTangent = true;
-        getValue(value.inTangent);
-    } else if (KEY_AS("to")) {
-        value.hasTangent = true;
-        getValue(value.outTangent);
-    } else return false;
+    if (KEY_AS("ti") && getValue(value.inTangent)) ;
+    else if (KEY_AS("to") && getValue(value.outTangent)) ;       
+    else return false;
 
+    value.hasTangent = true;
     return true;
 }
 
@@ -866,6 +868,25 @@ LottieRepeater* LottieParser::parseRepeater()
 }
 
 
+LottieOffsetPath* LottieParser::parseOffsetPath()
+{
+    auto offsetPath = new LottieOffsetPath;
+
+    context.parent = offsetPath;
+
+    while (auto key = nextObjectKey()) {
+        if (parseCommon(offsetPath, key)) continue;
+        else if (KEY_AS("a")) parseProperty<LottieProperty::Type::Float>(offsetPath->offset);
+        else if (KEY_AS("lj")) offsetPath->join = getStrokeJoin();
+        else if (KEY_AS("ml")) parseProperty<LottieProperty::Type::Float>(offsetPath->miterLimit);
+        else skip(key);
+    }
+    offsetPath->prepare();
+
+    return offsetPath;
+}
+
+
 LottieObject* LottieParser::parseObject()
 {
     auto type = getString();
@@ -887,7 +908,7 @@ LottieObject* LottieParser::parseObject()
     else if (!strcmp(type, "mm")) TVGERR("LOTTIE", "MergePath(mm) is not supported yet");
     else if (!strcmp(type, "pb")) TVGERR("LOTTIE", "Puker/Bloat(pb) is not supported yet");
     else if (!strcmp(type, "tw")) TVGERR("LOTTIE", "Twist(tw) is not supported yet");
-    else if (!strcmp(type, "op")) TVGERR("LOTTIE", "Offset Path(op) is not supported yet");
+    else if (!strcmp(type, "op")) return parseOffsetPath();
     else if (!strcmp(type, "zz")) TVGERR("LOTTIE", "Zig Zag(zz) is not supported yet");
     return nullptr;
 }
@@ -1144,6 +1165,7 @@ void LottieParser::parseTextRange(LottieText* text)
                 enterObject();
                 while (auto key = nextObjectKey()) {
                     if (KEY_AS("t")) parseProperty<LottieProperty::Type::Float>(selector->style.letterSpacing);
+                    else if (KEY_AS("ls")) parseProperty<LottieProperty::Type::Color>(selector->style.lineSpacing);
                     else if (KEY_AS("fc")) parseProperty<LottieProperty::Type::Color>(selector->style.fillColor);
                     else if (KEY_AS("fo")) parseProperty<LottieProperty::Type::Color>(selector->style.fillOpacity);
                     else if (KEY_AS("sw")) parseProperty<LottieProperty::Type::Float>(selector->style.strokeWidth);
