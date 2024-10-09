@@ -1857,6 +1857,7 @@ public:
     _TVG_DISABLE_CTOR(Initializer);
 };
 
+#define FLUX_TVG_ANIMATION_PATCHED
 
 /**
  * @class Animation
@@ -1871,6 +1872,7 @@ public:
 class TVG_API Animation
 {
 public:
+    Animation(Picture* picture);
     ~Animation();
 
     /**
@@ -1979,7 +1981,7 @@ public:
      * @return A new Animation object.
      *
      */
-    static std::unique_ptr<Animation> gen() noexcept;
+    static std::unique_ptr<Animation> gen(Picture* picture = nullptr) noexcept;
 
     _TVG_DECLARE_PRIVATE(Animation);
 };
