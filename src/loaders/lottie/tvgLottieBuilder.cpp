@@ -103,7 +103,7 @@ static void _skew(Matrix* m, float angleDeg, float axisDeg)
 
 static bool _updateTransform(LottieTransform* transform, float frameNo, bool autoOrient, Matrix& matrix, uint8_t& opacity, LottieExpressions* exps)
 {
-    identity(&matrix);
+    tvg::identity(&matrix);
 
     if (!transform) {
         opacity = 255;
@@ -161,8 +161,9 @@ void LottieBuilder::updateTransform(LottieLayer* layer, float frameNo)
     _updateTransform(transform, frameNo, layer->autoOrient, matrix, layer->cache.opacity, exps);
 
     if (parent) {
-        if (!identity((const Matrix*) &parent->cache.matrix)) {
-            if (identity((const Matrix*) &matrix)) layer->cache.matrix = parent->cache.matrix;
+        if (!tvg::identity((const Matrix*) &parent->cache.matrix)) {
+            if (tvg::identity((const Matrix*)&matrix))
+                layer->cache.matrix = parent->cache.matrix;
             else layer->cache.matrix = parent->cache.matrix * matrix;
         }
     }
@@ -347,7 +348,7 @@ static void _repeat(LottieGroup* parent, Shape* path, RenderContext* ctx)
                 shape->opacity(opacity);
 
                 Matrix m;
-                identity(&m);
+                tvg::identity(&m);
                 translate(&m, repeater->position.x * multiplier + repeater->anchor.x, repeater->position.y * multiplier + repeater->anchor.y);
                 scale(&m, powf(repeater->scale.x * 0.01f, multiplier), powf(repeater->scale.y * 0.01f, multiplier));
                 rotate(&m, repeater->rotation * multiplier);
@@ -791,7 +792,7 @@ void LottieBuilder::updatePolystar(LottieGroup* parent, LottieObject** child, fl
 
     //Optimize: Can we skip the individual coords transform?
     Matrix matrix;
-    identity(&matrix);
+    tvg::identity(&matrix);
     auto position = star->position(frameNo, exps);
     translate(&matrix, position.x, position.y);
     rotate(&matrix, star->rotation(frameNo, exps));

@@ -1,5 +1,6 @@
 #include "src/renderer/sw_engine/tvgSwImage.cpp"
 #include "src/renderer/sw_engine/tvgSwMath.cpp"
+#include "src/renderer/sw_engine/tvgSwPostEffect.cpp"
 #include "src/renderer/sw_engine/tvgSwRaster.cpp"
 #include "src/renderer/sw_engine/tvgSwRenderer.cpp"
 

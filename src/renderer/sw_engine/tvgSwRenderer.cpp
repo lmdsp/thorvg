@@ -306,6 +306,30 @@ SwRenderer::~SwRenderer()
 
 #if !FLUX_TVG_SW_RENDERER_PATCH_1
 
+bool SwRenderer::clear()
+{
+    for (auto task = tasks.begin(); task < tasks.end(); ++task) {
+        if ((*task)->disposed) {
+            delete (*task);
+        } else {
+            (*task)->done();
+            (*task)->pushed = false;
+        }
+    }
+    tasks.clear();
+
+    if (!sharedMpool) mpoolClear(mpool);
+
+    if (surface) {
+        vport.x = vport.y = 0;
+        vport.w = surface->w;
+        vport.h = surface->h;
+    }
+
+    return true;
+}
+
+
 bool SwRenderer::sync()
 {
     return true;
