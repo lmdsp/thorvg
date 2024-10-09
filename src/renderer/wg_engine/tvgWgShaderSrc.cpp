@@ -23,71 +23,21 @@
 #include "tvgWgShaderSrc.h"
 #include <string>
 
+#define WG_SHADER_SOURCE(...) #__VA_ARGS__
+
 //************************************************************************
-// shader pipeline fill
+// graphics shader source: stencil
 //************************************************************************
 
-const char* cShaderSource_PipelineFill = R"(
-// vertex input
-struct VertexInput {
-    @location(0) position: vec2f
-};
+const char* cShaderSrc_Stencil = R"(
+struct VertexInput { @location(0) position: vec2f };
+struct VertexOutput { @builtin(position) position: vec4f };
 
-// vertex output
-struct VertexOutput {
-    @builtin(position) position: vec4f
-};
-
-// uniforms
-@group(0) @binding(0) var<uniform> uViewMat      : mat4x4f;
-@group(1) @binding(0) var<uniform> uModelMat     : mat4x4f;
+@group(0) @binding(0) var<uniform> uViewMat  : mat4x4f;
+@group(1) @binding(0) var<uniform> uModelMat : mat4x4f;
 
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
-    // fill output
-    var out: VertexOutput;
-    out.position = uViewMat * uModelMat * vec4f(in.position.xy, 0.0, 1.0);
-    return out;
-}
-
-@fragment
-fn fs_main(in: VertexOutput) -> void {
-    // nothing to draw, just stencil value
-}
-)";
-
-//************************************************************************
-// shader pipeline solid
-//************************************************************************
-
-const char* cShaderSource_PipelineSolid = R"(
-// vertex input
-struct VertexInput {
-    @location(0) position: vec2f
-};
-
-// BlendSettigs
-struct BlendSettigs {
-    format  : u32, // ColorSpace
-    dummy0  : f32,
-    dummy1  : f32,
-    opacity : f32
-};
-
-// vertex output
-struct VertexOutput {
-    @builtin(position) position: vec4f
-};
-
-// uniforms
-@group(0) @binding(0) var<uniform> uViewMat      : mat4x4f;
-@group(1) @binding(0) var<uniform> uModelMat     : mat4x4f;
-@group(1) @binding(1) var<uniform> uBlendSettigs : BlendSettigs;
-@group(2) @binding(0) var<uniform> uSolidColor   : vec4f;
-
-@vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
-    // fill output
     var out: VertexOutput;
     out.position = uViewMat * uModelMat * vec4f(in.position.xy, 0.0, 1.0);
     return out;
@@ -95,248 +45,126 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    // resulting color
-    var color = vec4(1.0);
-
-    // get color
-    color = uSolidColor;
-
-    return vec4f(color.rgb, color.a * uBlendSettigs.opacity);
+    return vec4f(0.0, 0.0, 0.0, 1.0);
 }
 )";
 
 //************************************************************************
-// shader pipeline linear
+// graphics shader source: solid
 //************************************************************************
 
-const char* cShaderSource_PipelineLinear = R"(
-// vertex input
-struct VertexInput {
-    @location(0) position: vec2f
-};
+const char* cShaderSrc_Solid = R"(
+struct VertexInput { @location(0) position: vec2f };
+struct VertexOutput { @builtin(position) position: vec4f };
 
-// BlendSettigs
-struct BlendSettigs {
-    format  : u32, // ColorSpace
-    dummy0  : f32,
-    dummy1  : f32,
-    opacity : f32
-};
-
-// LinearGradient
-const MAX_LINEAR_GRADIENT_STOPS = 32;
-const MAX_LINEAR_GRADIENT_STOPS_PACKED = MAX_LINEAR_GRADIENT_STOPS / 4;
-struct LinearGradient {
-    nStops       : u32,
-    spread       : u32,
-    dummy0       : u32,
-    dummy1       : u32,
-    gradStartPos : vec2f,
-    gradEndPos   : vec2f,
-    stopPoints   : array<vec4f, MAX_LINEAR_GRADIENT_STOPS_PACKED>,
-    stopColors   : array<vec4f, MAX_LINEAR_GRADIENT_STOPS>
-};
-
-// vertex output
-struct VertexOutput {
-    @builtin(position) position : vec4f,
-    @location(0) vScreenCoord   : vec2f
-};
-
-// uniforms
-@group(0) @binding(0) var<uniform> uViewMat        : mat4x4f;
-@group(1) @binding(0) var<uniform> uModelMat       : mat4x4f;
-@group(1) @binding(1) var<uniform> uBlendSettigs   : BlendSettigs;
-@group(2) @binding(0) var<uniform> uLinearGradient : LinearGradient;
+@group(0) @binding(0) var<uniform> uViewMat : mat4x4f;
+@group(1) @binding(0) var<uniform> uModelMat      : mat4x4f;
+@group(1) @binding(1) var<uniform> uBlendSettings : vec4f;
+@group(2) @binding(0) var<uniform> uSolidColor : vec4f;
 
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
-    // fill output
     var out: VertexOutput;
     out.position = uViewMat * uModelMat * vec4f(in.position.xy, 0.0, 1.0);
-    out.vScreenCoord = in.position.xy;
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    // resulting color
-    var color = vec4(1.0);
-
-    let pos: vec2f = in.vScreenCoord;
-    let st: vec2f = uLinearGradient.gradStartPos;
-    let ed: vec2f = uLinearGradient.gradEndPos;
-
-    let ba: vec2f = ed - st;
-
-    // get interpolation factor
-    var t: f32 = abs(dot(pos - st, ba) / dot(ba, ba));
-
-    // fill spread
-    switch uLinearGradient.spread {
-        /* Pad     */ case 0u: { t = clamp(t, 0.0, 1.0); }
-        /* Reflect */ case 1u: { t = select(1.0 - fract(t), fract(t), u32(t) % 2 == 0); }
-        /* Repeat  */ case 2u: { t = fract(t); }
-        default: { t = t; }
-    }
-
-    // get stops count
-    let last: i32 = i32(uLinearGradient.nStops) - 1;
-
-    // closer than first stop
-    if (t <= uLinearGradient.stopPoints[0][0]) {
-        color = uLinearGradient.stopColors[0];
-    }
-    
-    // further than last stop
-    if (t >= uLinearGradient.stopPoints[last/4][last%4]) {
-        color = uLinearGradient.stopColors[last];
-    }
-
-    // look in the middle
-    for (var i = 0i; i < last; i++) {
-        let strt = uLinearGradient.stopPoints[i/4][i%4];
-        let stop = uLinearGradient.stopPoints[(i+1)/4][(i+1)%4];
-        if ((t > strt) && (t < stop)) {
-            let step: f32 = (t - strt) / (stop - strt);
-            color = mix(uLinearGradient.stopColors[i], uLinearGradient.stopColors[i+1], step);
-        }
-    }
-
-    return vec4f(color.rgb, color.a * uBlendSettigs.opacity);
+    let Sc = uSolidColor.rgb;
+    let Sa = uSolidColor.a;
+    let So = uBlendSettings.a;
+    return vec4f(Sc * Sa * So, Sa * So);
 }
 )";
 
 //************************************************************************
-// shader pipeline radial
+// graphics shader source: linear
 //************************************************************************
 
-const char* cShaderSource_PipelineRadial = R"(
-// vertex input
-struct VertexInput {
-    @location(0) position: vec2f
-};
-
-// BlendSettigs
-struct BlendSettigs {
-    format  : u32, // ColorSpace
-    dummy0  : f32,
-    dummy1  : f32,
-    opacity : f32
-};
-
-// RadialGradient
-const MAX_RADIAL_GRADIENT_STOPS = 32;
-const MAX_RADIAL_GRADIENT_STOPS_PACKED = MAX_RADIAL_GRADIENT_STOPS / 4;
-struct RadialGradient {
-    nStops     : u32,
-    spread     : u32,
-    dummy0     : u32,
-    dummy1     : u32,
-    centerPos  : vec2f,
-    radius     : vec2f,
-    stopPoints : array<vec4f, MAX_RADIAL_GRADIENT_STOPS_PACKED>,
-    stopColors : array<vec4f, MAX_RADIAL_GRADIENT_STOPS>
-};
-
-// vertex output
-struct VertexOutput {
-    @builtin(position) position : vec4f,
-    @location(0) vScreenCoord   : vec2f
-};
+const char* cShaderSrc_Linear = R"(
+struct VertexInput { @location(0) position: vec2f };
+struct VertexOutput { @builtin(position) position : vec4f, @location(0) vScreenCoord : vec4f };
 
 // uniforms
-@group(0) @binding(0) var<uniform> uViewMat        : mat4x4f;
-@group(1) @binding(0) var<uniform> uModelMat       : mat4x4f;
-@group(1) @binding(1) var<uniform> uBlendSettigs   : BlendSettigs;
-@group(2) @binding(0) var<uniform> uRadialGradient : RadialGradient;
+@group(0) @binding(0) var<uniform> uViewMat : mat4x4f;
+@group(1) @binding(0) var<uniform> uModelMat : mat4x4f;
+@group(1) @binding(1) var<uniform> uBlendSettings : vec4f;
+@group(2) @binding(0) var uSamplerGrad : sampler;
+@group(2) @binding(1) var uTextureGrad : texture_2d<f32>;
+@group(2) @binding(2) var<uniform> uSettingGrad : vec4f;
+@group(2) @binding(3) var<uniform> uTransformGrad : mat4x4f;
 
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
-    // fill output
     var out: VertexOutput;
     out.position = uViewMat * uModelMat * vec4f(in.position.xy, 0.0, 1.0);
-    out.vScreenCoord = in.position.xy;
+    out.vScreenCoord = uTransformGrad * vec4f(in.position.xy, 0.0, 1.0);
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    // resulting color
-    var color = vec4(1.0);
-
-    // get interpolation factor
-    var t: f32 = distance(uRadialGradient.centerPos, in.vScreenCoord) / uRadialGradient.radius.x;
-
-    // fill spread
-    switch uRadialGradient.spread {
-        /* Pad     */ case 0u: { t = clamp(t, 0.0, 1.0); }
-        /* Reflect */ case 1u: { t = select(1.0 - fract(t), fract(t), u32(t) % 2 == 0); }
-        /* Repeat  */ case 2u: { t = fract(t); }
-        default: { t = t; }
-    }
-
-    // get stops count
-    let last: i32 = i32(uRadialGradient.nStops) - 1;
-
-    // closer than first stop
-    if (t <= uRadialGradient.stopPoints[0][0]) {
-        color = uRadialGradient.stopColors[0];
-    }
-    
-    // further than last stop
-    if (t >= uRadialGradient.stopPoints[last/4][last%4]) {
-        color = uRadialGradient.stopColors[last];
-    }
-
-    // look in the middle
-    for (var i = 0i; i < last; i++) {
-        let strt = uRadialGradient.stopPoints[i/4][i%4];
-        let stop = uRadialGradient.stopPoints[(i+1)/4][(i+1)%4];
-        if ((t > strt) && (t < stop)) {
-            let step: f32 = (t - strt) / (stop - strt);
-            color = mix(uRadialGradient.stopColors[i], uRadialGradient.stopColors[i+1], step);
-        }
-    }
-
-    return vec4f(color.rgb, color.a * uBlendSettigs.opacity);
+    let pos = in.vScreenCoord.xy;
+    let st = uSettingGrad.xy;
+    let ed = uSettingGrad.zw;
+    let ba = ed - st;
+    let t = dot(pos - st, ba) / dot(ba, ba);
+    let Sc = textureSample(uTextureGrad, uSamplerGrad, vec2f(t, 0.5));
+    let So = uBlendSettings.a;
+    return vec4f(Sc.rgb * Sc.a * So, Sc.a * So);
 }
 )";
 
 //************************************************************************
-// cShaderSource_PipelineImage
+// graphics shader source: radial
 //************************************************************************
 
-const char* cShaderSource_PipelineImage = R"(
-// vertex input
-struct VertexInput {
-    @location(0) position: vec2f,
-    @location(1) texCoord: vec2f
-};
+const char* cShaderSrc_Radial = R"(
+struct VertexInput { @location(0) position: vec2f };
+struct VertexOutput { @builtin(position) position : vec4f, @location(0) vScreenCoord : vec4f };
 
-// BlendSettigs
-struct BlendSettigs {
-    format  : u32, // ColorSpace
-    dummy0  : f32,
-    dummy1  : f32,
-    opacity : f32
-};
-
-// vertex output
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) texCoord: vec2f
-};
-
-@group(0) @binding(0) var<uniform> uViewMat      : mat4x4f;
-@group(1) @binding(0) var<uniform> uModelMat     : mat4x4f;
-@group(1) @binding(1) var<uniform> uBlendSettigs : BlendSettigs;
-@group(2) @binding(0) var uSampler               : sampler;
-@group(2) @binding(1) var uTextureView           : texture_2d<f32>;
+@group(0) @binding(0) var<uniform> uViewMat : mat4x4f;
+@group(1) @binding(0) var<uniform> uModelMat : mat4x4f;
+@group(1) @binding(1) var<uniform> uBlendSettings : vec4f;
+@group(2) @binding(0) var uSamplerGrad : sampler;
+@group(2) @binding(1) var uTextureGrad : texture_2d<f32>;
+@group(2) @binding(2) var<uniform> uSettingGrad : vec4f;
+@group(2) @binding(3) var<uniform> uTransformGrad : mat4x4f;
 
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
-    // fill output
+    var out: VertexOutput;
+    out.position = uViewMat * uModelMat * vec4f(in.position.xy, 0.0, 1.0);
+    out.vScreenCoord = uTransformGrad * vec4f(in.position.xy, 0.0, 1.0);
+    return out;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    let t: f32 = distance(uSettingGrad.zw, in.vScreenCoord.xy) / uSettingGrad.r;
+    let Sc = textureSample(uTextureGrad, uSamplerGrad, vec2f(t, 0.5));
+    let So = uBlendSettings.a;
+    return vec4f(Sc.rgb * Sc.a * So, Sc.a * So);
+}
+)";
+
+//************************************************************************
+// graphics shader source: image
+//************************************************************************
+
+const char* cShaderSrc_Image = R"(
+struct VertexInput { @location(0) position: vec2f, @location(1) texCoord: vec2f };
+struct VertexOutput { @builtin(position) position: vec4f, @location(0) texCoord: vec2f };
+
+@group(0) @binding(0) var<uniform> uViewMat : mat4x4f;
+@group(1) @binding(0) var<uniform> uModelMat      : mat4x4f;
+@group(1) @binding(1) var<uniform> uBlendSettings : vec4f;
+@group(2) @binding(0) var uSampler     : sampler;
+@group(2) @binding(1) var uTextureView : texture_2d<f32>;
+
+@vertex
+fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     out.position = uViewMat * uModelMat * vec4f(in.position.xy, 0.0, 1.0);
     out.texCoord = in.texCoord;
@@ -345,196 +173,395 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    var color: vec4f = textureSample(uTextureView, uSampler, in.texCoord.xy);
-    var result: vec4f = color;
-    var format: u32 = uBlendSettigs.format;
-    if (format == 1u) { /* FMT_ARGB8888 */
-        result = color.bgra;
-    } else if (format == 2u) { /* FMT_ABGR8888S */
-        result = vec4(color.rgb * color.a, color.a);
-    } else if (format == 3u) { /* FMT_ARGB8888S */
-        result = vec4(color.bgr * color.a, color.a);
+    var Sc: vec4f = textureSample(uTextureView, uSampler, in.texCoord.xy);
+    let So: f32 = uBlendSettings.a;
+    switch u32(uBlendSettings.r) {
+        case 0u: { Sc = Sc.rgba; }
+        case 1u: { Sc = Sc.bgra; }
+        case 2u: { Sc = Sc.rgba; }
+        case 3u: { Sc = Sc.bgra; }
+        default: {}
     }
-    return vec4f(result.rgb, result.a * uBlendSettigs.opacity);
+    return Sc * So;
 };
 )";
 
 //************************************************************************
-// cShaderSource_PipelineComputeBlend
+// graphics shader source: scene compose
 //************************************************************************
 
-// pipeline shader modules clear
-const char* cShaderSource_PipelineComputeClear = R"(
-@group(0) @binding(0) var imageDst : texture_storage_2d<rgba8unorm, read_write>;
+const char* cShaderSrc_Scene_Comp = R"(
+struct VertexInput { @location(0) position: vec2f, @location(1) texCoord: vec2f };
+struct VertexOutput { @builtin(position) position: vec4f, @location(0) texCoord: vec2f };
 
-@compute @workgroup_size(8, 8)
-fn cs_main( @builtin(global_invocation_id) id: vec3u) {
-    textureStore(imageDst, id.xy, vec4f(0.0, 0.0, 0.0, 0.0));
+@group(0) @binding(0) var uSamplerSrc : sampler;
+@group(0) @binding(1) var uTextureSrc : texture_2d<f32>;
+@group(1) @binding(0) var uSamplerMsk : sampler;
+@group(1) @binding(1) var uTextureMsk : texture_2d<f32>;
+
+@vertex
+fn vs_main(in: VertexInput) -> VertexOutput {
+    var out: VertexOutput;
+    out.position = vec4f(in.position.xy, 0.0, 1.0);
+    out.texCoord = in.texCoord;
+    return out;
 }
+
+@fragment
+fn fs_main_None(in: VertexOutput) -> @location(0) vec4f {
+    let src: vec4f = textureSample(uTextureSrc, uSamplerSrc, in.texCoord.xy);
+    return vec4f(src);
+};
+
+@fragment
+fn fs_main_ClipPath(in: VertexOutput) -> @location(0) vec4f {
+    let src: vec4f = textureSample(uTextureSrc, uSamplerSrc, in.texCoord.xy);
+    let msk: vec4f = textureSample(uTextureMsk, uSamplerMsk, in.texCoord.xy);
+    return vec4f(src * msk.a);
+};
+
+@fragment
+fn fs_main_AlphaMask(in: VertexOutput) -> @location(0) vec4f {
+    let src: vec4f = textureSample(uTextureSrc, uSamplerSrc, in.texCoord.xy);
+    let msk: vec4f = textureSample(uTextureMsk, uSamplerMsk, in.texCoord.xy);
+    return vec4f(src * msk.a);
+};
+
+@fragment
+fn fs_main_InvAlphaMask(in: VertexOutput) -> @location(0) vec4f {
+    let src: vec4f = textureSample(uTextureSrc, uSamplerSrc, in.texCoord.xy);
+    let msk: vec4f = textureSample(uTextureMsk, uSamplerMsk, in.texCoord.xy);
+    return vec4f(src * (1.0 - msk.a));
+};
+
+@fragment
+fn fs_main_LumaMask(in: VertexOutput) -> @location(0) vec4f {
+    let src: vec4f = textureSample(uTextureSrc, uSamplerSrc, in.texCoord.xy);
+    let msk: vec4f = textureSample(uTextureMsk, uSamplerMsk, in.texCoord.xy);
+    let luma: f32 = dot(msk.rgb, vec3f(0.2125, 0.7154, 0.0721));
+    return vec4f(src * luma);
+};
+
+@fragment
+fn fs_main_InvLumaMask(in: VertexOutput) -> @location(0) vec4f {
+    let src: vec4f = textureSample(uTextureSrc, uSamplerSrc, in.texCoord.xy);
+    let msk: vec4f = textureSample(uTextureMsk, uSamplerMsk, in.texCoord.xy);
+    let luma: f32 = dot(msk.rgb, vec3f(0.2125, 0.7154, 0.0721));
+    return vec4f(src * (1.0 - luma));
+};
+
+@fragment
+fn fs_main_AddMask(in: VertexOutput) -> @location(0) vec4f {
+    let src: vec4f = textureSample(uTextureSrc, uSamplerSrc, in.texCoord.xy);
+    let msk: vec4f = textureSample(uTextureMsk, uSamplerMsk, in.texCoord.xy);
+    return vec4f(src.rgb, src.a + msk.a * (1.0 - src.a));
+};
+
+@fragment
+fn fs_main_SubtractMask(in: VertexOutput) -> @location(0) vec4f {
+    let src: vec4f = textureSample(uTextureSrc, uSamplerSrc, in.texCoord.xy);
+    let msk: vec4f = textureSample(uTextureMsk, uSamplerMsk, in.texCoord.xy);
+    return vec4f(src.rgb, src.a * (1.0 - msk.a));
+};
+
+@fragment
+fn fs_main_IntersectMask(in: VertexOutput) -> @location(0) vec4f {
+    let src: vec4f = textureSample(uTextureSrc, uSamplerSrc, in.texCoord.xy);
+    let msk: vec4f = textureSample(uTextureMsk, uSamplerMsk, in.texCoord.xy);
+    return vec4f(src.rgb, src.a * msk.a);
+};
+
+@fragment
+fn fs_main_DifferenceMask(in: VertexOutput) -> @location(0) vec4f {
+    let src: vec4f = textureSample(uTextureSrc, uSamplerSrc, in.texCoord.xy);
+    let msk: vec4f = textureSample(uTextureMsk, uSamplerMsk, in.texCoord.xy);
+    return vec4f(src.rgb, src.a * (1.0 - msk.a) + msk.a * (1.0 - src.a));
+};
+
+@fragment
+fn fs_main_LightenMask(in: VertexOutput) -> @location(0) vec4f {
+    let src: vec4f = textureSample(uTextureSrc, uSamplerSrc, in.texCoord.xy);
+    let msk: vec4f = textureSample(uTextureMsk, uSamplerMsk, in.texCoord.xy);
+    return vec4f(src.rgb, max(src.a, msk.a));
+};
+
+@fragment
+fn fs_main_DarkenMask(in: VertexOutput) -> @location(0) vec4f {
+    let src: vec4f = textureSample(uTextureSrc, uSamplerSrc, in.texCoord.xy);
+    let msk: vec4f = textureSample(uTextureMsk, uSamplerMsk, in.texCoord.xy);
+    return vec4f(src.rgb, min(src.a, msk.a));
+};
 )";
 
 
-// pipeline shader modules blend
-const char* cShaderSource_PipelineComputeBlend = R"(
-@group(0) @binding(0) var imageSrc : texture_storage_2d<rgba8unorm, read_write>;
-@group(1) @binding(0) var imageDst : texture_storage_2d<rgba8unorm, read_write>;
-@group(2) @binding(0) var<uniform> blendMethod : u32;
+//************************************************************************
+// graphics shader source: scene blend
+//************************************************************************
+
+const char* cShaderSrc_Scene_Blend = R"(
+struct VertexInput { @location(0) position: vec2f, @location(1) texCoord: vec2f };
+struct VertexOutput { @builtin(position) position: vec4f, @location(0) texCoord: vec2f };
+
+@group(0) @binding(0) var uSamplerSrc : sampler;
+@group(0) @binding(1) var uTextureSrc : texture_2d<f32>;
+@group(1) @binding(0) var<uniform> So : f32;
+
+@vertex
+fn vs_main(in: VertexInput) -> VertexOutput {
+    var out: VertexOutput;
+    out.position = vec4f(in.position.xy, 0.0, 1.0);
+    out.texCoord = in.texCoord;
+    return out;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    return textureSample(uTextureSrc, uSamplerSrc, in.texCoord.xy) * So;
+};
+)";
+
+//************************************************************************
+// graphics shader source: texture blit
+//************************************************************************
+
+const char* cShaderSrc_Blit = R"(
+struct VertexInput { @location(0) position: vec2f, @location(1) texCoord: vec2f };
+struct VertexOutput { @builtin(position) position: vec4f, @location(0) texCoord: vec2f };
+
+@group(0) @binding(0) var uSamplerSrc : sampler;
+@group(0) @binding(1) var uTextureSrc : texture_2d<f32>;
+
+@vertex
+fn vs_main(in: VertexInput) -> VertexOutput {
+    var out: VertexOutput;
+    out.position = vec4f(in.position.xy, 0.0, 1.0);
+    out.texCoord = in.texCoord;
+    return out;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    return textureSample(uTextureSrc, uSamplerSrc, in.texCoord.xy);
+};
+)";
+
+//************************************************************************
+// compute shader source: merge clip path masks
+//************************************************************************
+
+const char* cShaderSrc_MergeMasks = R"(
+@group(0) @binding(0) var imageMsk0 : texture_storage_2d<rgba8unorm, read>;
+@group(1) @binding(0) var imageMsk1 : texture_storage_2d<rgba8unorm, read>;
+@group(2) @binding(0) var imageTrg  : texture_storage_2d<rgba8unorm, write>;
 
 @compute @workgroup_size(8, 8)
-fn cs_main( @builtin(global_invocation_id) id: vec3u) {
-    let texSize = textureDimensions(imageSrc);
-    if ((id.x >= texSize.x) || (id.y >= texSize.y)) { return; };
-
-    let srcColor = textureLoad(imageSrc, id.xy);
-    if (srcColor.a == 0.0) { return; };
-    let dstColor = textureLoad(imageDst, id.xy);
-
-    let Sa: f32  = srcColor.a;
-    let Da: f32  = dstColor.a;
-    let S: vec3f = srcColor.xyz;
-    let D: vec3f = dstColor.xyz;
-    let One: vec3f = vec3(1.0);
-
-    var color: vec3f = vec3f(0.0, 0.0, 0.0);
-    switch blendMethod {
-        /* Normal     */ case 0u:  { color = (Sa * S) + (1.0 - Sa) * D; }
-        /* Add        */ case 1u:  { color = (S + D); }
-        /* Screen     */ case 2u:  { color = (S + D) - (S * D); }
-        /* Multiply   */ case 3u:  { color = (S * D); }
-        /* Overlay    */ case 4u:  { color = (Sa * Da) - 2 * (Da - S) * (Sa - D); }
-        /* Difference */ case 5u:  { color = abs(S - D); }
-        /* Exclusion  */ case 6u:  { color = S + D - (2 * S * D); }
-        /* SrcOver    */ case 7u:  { color = S; }
-        /* Darken     */ case 8u:  { color = min(S, D); }
-        /* Lighten    */ case 9u:  { color = max(S, D); }
-        /* ColorDodge */ case 10u: { color = D / (One - S); }
-        /* ColorBurn  */ case 11u: { color = One - (One - D) / S; }
-        /* HardLight  */ case 12u: { color = (Sa * Da) - 2.0 * (Da - S) * (Sa - D); }
-        /* SoftLight  */ case 13u: { color = (One - 2 * S) * (D * D) + (2 * S * D); }
-        default:  { color = (Sa * S) + (1.0 - Sa) * D; }
-    }
-
-    textureStore(imageDst, id.xy, vec4f(color, Sa));
+fn cs_main(@builtin(global_invocation_id) id: vec3u) {
+    let colorMsk0 = textureLoad(imageMsk0, id.xy);
+    let colorMsk1 = textureLoad(imageMsk1, id.xy);
+    textureStore(imageTrg, id.xy, colorMsk0 * colorMsk1);
 }
 )";
 
-// pipeline shader modules compose
-const char* cShaderSource_PipelineComputeCompose = R"(
-@group(0) @binding(0) var imageSrc : texture_storage_2d<rgba8unorm, read_write>;
-@group(1) @binding(0) var imageMsk : texture_storage_2d<rgba8unorm, read_write>;
-@group(2) @binding(0) var<uniform> composeMethod : u32;
-@group(3) @binding(0) var<uniform> opacity : f32;
+//************************************************************************
+// compute shader source: blend
+//************************************************************************
 
-@compute @workgroup_size(8, 8)
-fn cs_main( @builtin(global_invocation_id) id: vec3u) {
-    let texSize = textureDimensions(imageSrc);
-    if ((id.x >= texSize.x) || (id.y >= texSize.y)) { return; };
-
-    let colorSrc = textureLoad(imageSrc, id.xy);
-    let colorMsk = textureLoad(imageMsk, id.xy);
-
-    var color: vec3f = colorSrc.xyz;
-    var alpha: f32   = colorMsk.a;
-    switch composeMethod {
-        /* None           */ case 0u: { color = colorSrc.xyz; }
-        /* ClipPath       */ case 1u: { if (colorMsk.a == 0) { alpha = 0.0; }; }
-        /* AlphaMask      */ case 2u: { color = mix(colorMsk.xyz, colorSrc.xyz, colorSrc.a * colorMsk.b); }
-        /* InvAlphaMask   */ case 3u: { color = mix(colorSrc.xyz, colorMsk.xyz, colorSrc.a * colorMsk.b); alpha = 1.0 - colorMsk.b; }
-        /* LumaMask       */ case 4u: { color = colorSrc.xyz * (0.299 * colorMsk.r + 0.587 * colorMsk.g + 0.114 * colorMsk.b);  }
-        /* InvLumaMask    */ case 5u: { color = colorSrc.xyz * (1.0 - (0.299 * colorMsk.r + 0.587 * colorMsk.g + 0.114 * colorMsk.b)); alpha = 1.0 - colorMsk.b; }
-        /* AddMask        */ case 6u: { color = colorSrc.xyz * colorSrc.a + colorMsk.xyz * (1.0 - colorSrc.a); }
-        /* SubtractMask   */ case 7u: { color = colorSrc.xyz * colorSrc.a - colorMsk.xyz * (1.0 - colorSrc.a); }
-        /* IntersectMask  */ case 8u: { color = colorSrc.xyz * min(colorSrc.a, colorMsk.a); }
-        /* DifferenceMask */ case 9u: { color = abs(colorSrc.xyz - colorMsk.xyz * (1.0 - colorMsk.a)); }
-        default: { color = colorSrc.xyz; }
-    }
-
-    textureStore(imageSrc, id.xy, vec4f(color, alpha * opacity));
-}
-)";
-
-// pipeline shader modules compose blend
-const char* cShaderSource_PipelineComputeComposeBlend = R"(
+const char* cShaderSrc_BlendHeader_Solid = R"(
 @group(0) @binding(0) var imageSrc : texture_storage_2d<rgba8unorm, read>;
-@group(0) @binding(1) var imageMsk : texture_storage_2d<rgba8unorm, read>;
-@group(0) @binding(2) var imageDst : texture_storage_2d<rgba8unorm, read_write>;
-@group(1) @binding(0) var<uniform> composeMethod : u32;
-@group(2) @binding(0) var<uniform> blendMethod : u32;
-@group(3) @binding(0) var<uniform> opacity : f32;
+@group(1) @binding(0) var imageDst : texture_storage_2d<rgba8unorm, read>;
+@group(2) @binding(0) var imageTgt : texture_storage_2d<rgba8unorm, write>;
+@group(3) @binding(0) var<uniform> So : f32;
 
-@compute @workgroup_size(8, 8)
-fn cs_main( @builtin(global_invocation_id) id: vec3u) {
-    let texSize = textureDimensions(imageSrc);
-    if ((id.x >= texSize.x) || (id.y >= texSize.y)) { return; };
-
+struct FragData { Sc: vec3f, Sa: f32, Dc: vec3f, Da: f32, skip: bool };
+fn getFragData(id: vec2u) -> FragData {
+    var data: FragData;
+    data.skip = true;
     let colorSrc = textureLoad(imageSrc, id.xy);
-    let colorMsk = textureLoad(imageMsk, id.xy);
-    if ((length(colorSrc) == 0.0) || (length(colorMsk) == 0.0)) { return; };
+    if (colorSrc.a == 0.0) { return data; }
     let colorDst = textureLoad(imageDst, id.xy);
+    data.Sc = colorSrc.rgb;
+    data.Sa = colorSrc.a;
+    data.Dc = colorDst.rgb;
+    data.Da = colorDst.a;
+    data.skip = false;
+    return data;
+};
 
-    var color: vec3f = colorSrc.xyz;
-    var alpha: f32   = colorMsk.a;
-    let luma: f32    = dot(colorMsk.xyz, vec3f(0.299, 0.587, 0.114));
-    switch composeMethod {
-        /* None           */ case 0u: { color = colorSrc.xyz; }
-        /* ClipPath       */ case 1u: { if (colorMsk.a == 0) { alpha = 0.0; }; }
-        /* AlphaMask      */ case 2u: { color = colorSrc.xyz; alpha = colorSrc.a * colorMsk.a; }
-        /* InvAlphaMask   */ case 3u: { color = colorSrc.xyz; alpha = colorSrc.a * (1.0 - colorMsk.a); }
-        /* LumaMask       */ case 4u: { color = colorSrc.xyz; alpha = colorSrc.a * luma; }
-        /* InvLumaMask    */ case 5u: { color = colorSrc.xyz; alpha = colorSrc.a * (1.0 - luma); }
-        /* AddMask        */ case 6u: { color = colorSrc.xyz * colorSrc.a + colorMsk.xyz * (1.0 - colorSrc.a); }
-        /* SubtractMask   */ case 7u: { color = colorSrc.xyz * colorSrc.a - colorMsk.xyz * (1.0 - colorSrc.a); }
-        /* IntersectMask  */ case 8u: { color = colorSrc.xyz * min(colorSrc.a, colorMsk.a); }
-        /* DifferenceMask */ case 9u: { color = abs(colorMsk.xyz - colorSrc.xyz * (1.0 - colorMsk.a)); }
-        default: { color = colorSrc.xyz; }
-    }
-
-    let S: vec3f = color.xyz;
-    let D: vec3f = colorDst.xyz;
-    let Sa: f32  = alpha;
-    let Da: f32  = colorDst.a;
-    let One: vec3f = vec3(1.0);
-    switch blendMethod {
-        /* Normal     */ case 0u:  { color = (Sa * S) + (1.0 - Sa) * D; }
-        /* Add        */ case 1u:  { color = (S + D); }
-        /* Screen     */ case 2u:  { color = (S + D) - (S * D); }
-        /* Multiply   */ case 3u:  { color = (S * D); }
-        /* Overlay    */ case 4u:  { color = (Sa * Da) - 2 * (Da - S) * (Sa - D); }
-        /* Difference */ case 5u:  { color = abs(S - D); }
-        /* Exclusion  */ case 6u:  { color = S + D - (2 * S * D); }
-        /* SrcOver    */ case 7u:  { color = S; }
-        /* Darken     */ case 8u:  { color = min(S, D); }
-        /* Lighten    */ case 9u:  { color = max(S, D); }
-        /* ColorDodge */ case 10u: { color = D / (One - S); }
-        /* ColorBurn  */ case 11u: { color = One - (One - D) / S; }
-        /* HardLight  */ case 12u: { color = (Sa * Da) - 2.0 * (Da - S) * (Sa - D); }
-        /* SoftLight  */ case 13u: { color = (One - 2 * S) * (D * D) + (2 * S * D); }
-        default:  { color = (Sa * S) + (1.0 - Sa) * D; }
-    }
-
-    textureStore(imageDst, id.xy, vec4f(color, Sa));
-}
+fn postProcess(d: FragData, R: vec4f) -> vec4f { return R; };
 )";
 
-// pipeline shader modules anti-aliasing
-const char* cShaderSource_PipelineComputeAntiAlias = R"(
-@group(0) @binding(0) var imageSrc : texture_storage_2d<rgba8unorm, read_write>;
-@group(1) @binding(0) var imageDst : texture_storage_2d<bgra8unorm, write>;
+
+const char* cShaderSrc_BlendHeader_Gradient = R"(
+@group(0) @binding(0) var imageSrc : texture_storage_2d<rgba8unorm, read>;
+@group(1) @binding(0) var imageDst : texture_storage_2d<rgba8unorm, read>;
+@group(2) @binding(0) var imageTgt : texture_storage_2d<rgba8unorm, write>;
+@group(3) @binding(0) var<uniform> So : f32;
+
+struct FragData { Sc: vec3f, Sa: f32, Dc: vec3f, Da: f32, skip: bool };
+fn getFragData(id: vec2u) -> FragData {
+    var data: FragData;
+    data.skip = true;
+    let colorSrc = textureLoad(imageSrc, id.xy);
+    if (colorSrc.a == 0.0) { return data; }
+    let colorDst = textureLoad(imageDst, id.xy);
+    data.Sc = colorSrc.rgb;
+    data.Sa = colorSrc.a;
+    data.Dc = colorDst.rgb;
+    data.Da = colorDst.a;
+    data.skip = false;
+    data.Sc = data.Sc + data.Dc * (1.0 - data.Sa);
+    data.Sa = data.Sa + data.Da * (1.0 - data.Sa);
+    return data;
+};
+
+fn postProcess(d: FragData, R: vec4f) -> vec4f { return R; };
+)";
+
+const char* cShaderSrc_BlendHeader_Image = R"(
+@group(0) @binding(0) var imageSrc : texture_storage_2d<rgba8unorm, read>;
+@group(1) @binding(0) var imageDst : texture_storage_2d<rgba8unorm, read>;
+@group(2) @binding(0) var imageTgt : texture_storage_2d<rgba8unorm, write>;
+@group(3) @binding(0) var<uniform> So : f32;
+
+struct FragData { Sc: vec3f, Sa: f32, Dc: vec3f, Da: f32, skip: bool };
+fn getFragData(id: vec2u) -> FragData {
+    var data: FragData;
+    data.skip = true;
+    let colorSrc = textureLoad(imageSrc, id.xy);
+    if (colorSrc.a == 0.0) { return data; }
+    let colorDst = textureLoad(imageDst, id.xy);
+    data.Sc = colorSrc.rgb;
+    data.Sa = colorSrc.a;
+    data.Dc = colorDst.rgb;
+    data.Da = colorDst.a;
+    data.skip = false;
+    data.Sc = data.Sc * So;
+    data.Sa = data.Sa * So;
+    return data;
+};
+
+fn postProcess(d: FragData, R: vec4f) -> vec4f {
+    return mix(vec4(d.Dc, d.Da), R, d.Sa);
+};
+)";
+
+const char* cShaderSrc_Blend_Funcs = R"(
+@compute @workgroup_size(8, 8)
+fn cs_main_Normal(@builtin(global_invocation_id) id: vec3u) {
+    let d: FragData = getFragData(id.xy);
+    if (d.skip) { return; }
+    let Rc = d.Sc + d.Dc * (1.0 - d.Sa);
+    let Ra = d.Sa + d.Da * (1.0 - d.Sa);
+    textureStore(imageTgt, id.xy, vec4f(Rc, Ra));
+};
 
 @compute @workgroup_size(8, 8)
-fn cs_main( @builtin(global_invocation_id) id: vec3u) {
-    let texSizeSrc = textureDimensions(imageSrc);
-    let texSizeDst = textureDimensions(imageDst);
-    if ((id.x >= texSizeDst.x) || (id.y >= texSizeDst.y)) { return; };
+fn cs_main_Add(@builtin(global_invocation_id) id: vec3u) {
+    let d: FragData = getFragData(id.xy);
+    if (d.skip) { return; }
+    let Rc = d.Sc + d.Dc;
+    textureStore(imageTgt, id.xy, postProcess(d, vec4f(Rc, 1.0)));
+};
 
-    let samples = u32(texSizeSrc.x / texSizeDst.x);
-    var color = vec4f(0);
-    for (var i = 0u; i < samples; i++) {
-        for (var j = 0u; j < samples; j++) {
-            color += textureLoad(imageSrc, vec2(id.x * samples + j, id.y * samples + i));
-        }
-    }
+@compute @workgroup_size(8, 8)
+fn cs_main_Screen(@builtin(global_invocation_id) id: vec3u) {
+    let d: FragData = getFragData(id.xy);
+    if (d.skip) { return; }
+    let Rc = d.Sc + d.Dc - d.Sc * d.Dc;
+    textureStore(imageTgt, id.xy, postProcess(d, vec4f(Rc, 1.0)));
+};
 
-    textureStore(imageDst, id.xy, color / f32(samples * samples));
-}
+@compute @workgroup_size(8, 8)
+fn cs_main_Multiply(@builtin(global_invocation_id) id: vec3u) {
+    let d: FragData = getFragData(id.xy);
+    if (d.skip) { return; }
+    let Rc = d.Sc * d.Dc;
+    textureStore(imageTgt, id.xy, postProcess(d, vec4f(Rc, 1.0)));
+};
+
+@compute @workgroup_size(8, 8)
+fn cs_main_Overlay(@builtin(global_invocation_id) id: vec3u) {
+    let d: FragData = getFragData(id.xy);
+    if (d.skip) { return; }
+    var Rc: vec3f;
+    Rc.r = select(1.0 - min(1.0, 2 * (1 - d.Sc.r) * (1 - d.Dc.r)), min(1.0, 2 * d.Sc.r * d.Dc.r), (d.Dc.r < 0.5));
+    Rc.g = select(1.0 - min(1.0, 2 * (1 - d.Sc.g) * (1 - d.Dc.g)), min(1.0, 2 * d.Sc.g * d.Dc.g), (d.Dc.g < 0.5));
+    Rc.b = select(1.0 - min(1.0, 2 * (1 - d.Sc.b) * (1 - d.Dc.b)), min(1.0, 2 * d.Sc.b * d.Dc.b), (d.Dc.b < 0.5));
+    textureStore(imageTgt, id.xy, postProcess(d, vec4f(Rc, 1.0)));
+};
+
+@compute @workgroup_size(8, 8)
+fn cs_main_Difference(@builtin(global_invocation_id) id: vec3u) {
+    let d: FragData = getFragData(id.xy);
+    if (d.skip) { return; }
+    let Rc = abs(d.Dc - d.Sc);
+    textureStore(imageTgt, id.xy, postProcess(d, vec4f(Rc, 1.0)));
+};
+
+@compute @workgroup_size(8, 8)
+fn cs_main_Exclusion(@builtin(global_invocation_id) id: vec3u) {
+    let d: FragData = getFragData(id.xy);
+    if (d.skip) { return; }
+    let One = vec3f(1.0, 1.0, 1.0);
+    let Rc = min(One, d.Sc + d.Dc - min(One, 2 * d.Sc * d.Dc));
+    textureStore(imageTgt, id.xy, postProcess(d, vec4f(Rc, 1.0)));
+};
+
+@compute @workgroup_size(8, 8)
+fn cs_main_Darken(@builtin(global_invocation_id) id: vec3u) {
+    let d: FragData = getFragData(id.xy);
+    if (d.skip) { return; }
+    let Rc = min(d.Sc, d.Dc);
+    textureStore(imageTgt, id.xy, postProcess(d, vec4f(Rc, 1.0)));
+};
+
+@compute @workgroup_size(8, 8)
+fn cs_main_Lighten(@builtin(global_invocation_id) id: vec3u) {
+    let d: FragData = getFragData(id.xy);
+    if (d.skip) { return; }
+    let Rc = max(d.Sc, d.Dc);
+    textureStore(imageTgt, id.xy, postProcess(d, vec4f(Rc, 1.0)));
+};
+
+@compute @workgroup_size(8, 8)
+fn cs_main_ColorDodge(@builtin(global_invocation_id) id: vec3u) {
+    let d: FragData = getFragData(id.xy);
+    if (d.skip) { return; }
+    var Rc: vec3f;
+    Rc.r = select(d.Dc.r, (d.Dc.r * 255.0 / (255.0 - d.Sc.r * 255.0))/255.0, (1.0 - d.Sc.r > 0.0));
+    Rc.g = select(d.Dc.g, (d.Dc.g * 255.0 / (255.0 - d.Sc.g * 255.0))/255.0, (1.0 - d.Sc.g > 0.0));
+    Rc.b = select(d.Dc.b, (d.Dc.b * 255.0 / (255.0 - d.Sc.b * 255.0))/255.0, (1.0 - d.Sc.b > 0.0));
+    textureStore(imageTgt, id.xy, postProcess(d, vec4f(Rc, 1.0)));
+};
+
+@compute @workgroup_size(8, 8)
+fn cs_main_ColorBurn(@builtin(global_invocation_id) id: vec3u) {
+    let d: FragData = getFragData(id.xy);
+    if (d.skip) { return; }
+    var Rc: vec3f;
+    Rc.r = select(1.0 - d.Dc.r, (255.0 - (255.0 - d.Dc.r * 255.0) / (d.Sc.r * 255.0)) / 255.0, (d.Sc.r > 0.0));
+    Rc.g = select(1.0 - d.Dc.g, (255.0 - (255.0 - d.Dc.g * 255.0) / (d.Sc.g * 255.0)) / 255.0, (d.Sc.g > 0.0));
+    Rc.b = select(1.0 - d.Dc.b, (255.0 - (255.0 - d.Dc.b * 255.0) / (d.Sc.b * 255.0)) / 255.0, (d.Sc.b > 0.0));
+    textureStore(imageTgt, id.xy, postProcess(d, vec4f(Rc, 1.0)));
+};
+
+@compute @workgroup_size(8, 8)
+fn cs_main_HardLight(@builtin(global_invocation_id) id: vec3u) {
+    let d: FragData = getFragData(id.xy);
+    if (d.skip) { return; }
+    var Rc: vec3f;
+    Rc.r = select(1.0 - min(1.0, 2 * (1 - d.Sc.r) * (1 - d.Dc.r)), min(1.0, 2 * d.Sc.r * d.Dc.r), (d.Sc.r < 0.5));
+    Rc.g = select(1.0 - min(1.0, 2 * (1 - d.Sc.g) * (1 - d.Dc.g)), min(1.0, 2 * d.Sc.g * d.Dc.g), (d.Sc.g < 0.5));
+    Rc.b = select(1.0 - min(1.0, 2 * (1 - d.Sc.b) * (1 - d.Dc.b)), min(1.0, 2 * d.Sc.b * d.Dc.b), (d.Sc.b < 0.5));
+    textureStore(imageTgt, id.xy, postProcess(d, vec4f(Rc, 1.0)));
+};
+
+@compute @workgroup_size(8, 8)
+fn cs_main_SoftLight(@builtin(global_invocation_id) id: vec3u) {
+    let d: FragData = getFragData(id.xy);
+    if (d.skip) { return; }
+    let One = vec3f(1.0, 1.0, 1.0);
+    let Rc = min(One, (One - 2 * d.Sc) * d.Dc * d.Dc + 2.0 * d.Sc * d.Dc);
+    textureStore(imageTgt, id.xy, postProcess(d, vec4f(Rc, 1.0)));
+};
 )";

@@ -91,6 +91,7 @@ public:
 
     GlProgram* getProgram() { return mProgram; }
     const RenderRegion& getViewport() const { return mViewport; }
+    float getDrawDepth() const { return mDrawDepth; }
 private:
     GlProgram* mProgram;
     RenderRegion mViewport = {};
@@ -152,7 +153,7 @@ public:
 
     void run() override;
 
-    GLuint getColorTextore() const { return mColorTex; }
+    GLuint getColorTexture() const { return mColorTex; }
 
     void setTargetViewport(const RenderRegion& vp) { mTargetViewport = vp; }
 private:
@@ -190,6 +191,33 @@ public:
 private:
     GlRenderTask* mClipTask;
     GlRenderTask* mMaskTask;
+};
+
+class GlSimpleBlendTask : public GlRenderTask
+{
+public:
+    GlSimpleBlendTask(BlendMethod method, GlProgram* program);
+    ~GlSimpleBlendTask() override = default;
+
+    void run() override;
+private:
+    BlendMethod mBlendMethod;
+};
+
+class GlComplexBlendTask: public GlRenderTask
+{
+public:
+    GlComplexBlendTask(GlProgram* program, GlRenderTarget* dstFbo, GlRenderTarget* dstCopyFbo, GlRenderTask* stencilTask, GlComposeTask* composeTask);
+    ~GlComplexBlendTask() override;
+
+    void run() override;
+
+    void normalizeDrawDepth(int32_t maxDepth) override;
+private:
+    GlRenderTarget* mDstFbo;
+    GlRenderTarget* mDstCopyFbo;
+    GlRenderTask* mStencilTask;
+    GlComposeTask* mComposeTask;
 };
 
 #endif /* _TVG_GL_RENDER_TASK_H_ */

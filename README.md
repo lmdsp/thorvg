@@ -7,7 +7,7 @@
 <br>
 [![Build Ubuntu](https://github.com/thorvg/thorvg/actions/workflows/build_ubuntu.yml/badge.svg?branch=main&event=push)](https://github.com/thorvg/thorvg/actions/workflows/build_ubuntu.yml)
 [![Build Windows](https://github.com/thorvg/thorvg/actions/workflows/build_windows.yml/badge.svg?branch=main&event=push)](https://github.com/thorvg/thorvg/actions/workflows/build_windows.yml)
-[![Build MacOS](https://github.com/thorvg/thorvg/actions/workflows/build_macos.yml/badge.svg?branch=main&event=push)](https://github.com/thorvg/thorvg/actions/workflows/build_macos.yml)
+[![Build macOS](https://github.com/thorvg/thorvg/actions/workflows/build_macos.yml/badge.svg?branch=main&event=push)](https://github.com/thorvg/thorvg/actions/workflows/build_macos.yml)
 [![Build iOS](https://github.com/thorvg/thorvg/actions/workflows/build_ios.yml/badge.svg?branch=main&event=push)](https://github.com/thorvg/thorvg/actions/workflows/build_ios.yml)
 [![Build Android](https://github.com/thorvg/thorvg/actions/workflows/build_android.yml/badge.svg?branch=main&event=push)](https://github.com/thorvg/thorvg/actions/workflows/build_android.yml)
 
@@ -20,19 +20,20 @@ ThorVG is an open-source graphics library designed for creating vector-based sce
 <br />
 The following list shows primitives that are supported by ThorVG: <br />
 <br />
+ 
+- **Lines & Shapes**: rectangles, circles, and paths with coordinate control
+- **Filling**: solid colors, linear & radial gradients, and path clipping
+- **Stroking**: stroke width, joins, caps, dash patterns, and trimming
+- **Scene Management**: retainable scene graph and object transformations
+- **Composition**: various blending and masking
+- **Text**: unicode characters with horizontal text layout using scalable fonts (TTF)
+- **Images**: TVG, SVG, JPG, PNG, WebP, and raw bitmaps
+- **Animations**: Lottie
 
- * Shapes: Line, Arc, Curve, Path, Polygon
- * Filling: Solid Color, Linear & Radial Gradients and Texture Mapping 
- * Stroking: Width, Join, Cap, Dash Patterns
- * Scene Graph & Transformations
- * Composition: Blending, Masking, Path Clipping
- * Text: Unicode Characters and Horizontal Text Layout using the Scalable Fonts (TTF)
- * Images: TVG, SVG, JPG, PNG, WebP, Raw Bitmap
- * Animations: Lottie
 <p align="center">
   <img width="700" height="auto" src="https://github.com/thorvg/thorvg/blob/main/res/example_primitives.png">
 </p>
-​ThorVG is designed for a wide range of programs, offering adaptability for integration and use in various applications and systems. It achieves this through a single binary with selectively buildable, modular components in a building block style. This ensures both optimal size and easy maintanence. <br />
+​ThorVG is designed for a wide range of programs, offering adaptability for integration and use in various applications and systems. It achieves this through a single binary with selectively buildable, modular components in a building block style. This ensures both optimal size and easy maintenance. <br />
 <br />
 <p align="center">
   <img width="700" height="auto" src="https://github.com/thorvg/thorvg/blob/main/res/example_structure.png">
@@ -257,8 +258,7 @@ tvg::Initializer::term();
 
 ThorVG facilitates [SVG Tiny Specification](https://www.w3.org/TR/SVGTiny12/) rendering via its dedicated SVG interpreter. Adhering to the SVG Tiny Specification, the implementation maintains a lightweight profile, rendering it particularly advantageous for embedded systems. While ThorVG comprehensively adheres to most of the SVG Tiny specs, certain features remain unsupported within the current framework. These include:</br>
 
- - Animation
- - Fonts & Text
+ - Animation 
  - Interactivity
  - Multimedia
 
@@ -281,9 +281,28 @@ The result is:
 <br />
 ## Lottie
 
-ThorVG supports the most powerful Lottie Animation [features](https://lottiefiles.com/supported-features). Lottie is a JSON-based vector animation file format that enables seamless distribution of animations on any platform, akin to shipping static assets. These files are compact and compatible with various devices, scaling up or down without pixelation. With Lottie, you can easily create, edit, test, collaborate, and distribute animations in a user-friendly manner. For more information, please visit [LottieFiles](https://www.lottiefiles.com)' website. <br />
+ThorVG supports the most powerful Lottie Animation [features](https://lottiefiles.com/supported-features). Lottie is an industry standard, JSON-based vector animation file format that enables seamless distribution of animations on any platform, akin to shipping static assets. These files are compact and compatible with various devices, scaling up or down without pixelation. With Lottie, you can easily create, edit, test, collaborate, and distribute animations in a user-friendly manner. For more information, please visit [Lottie Animation Community](https://lottie.github.io/)' website. <br />
+<br />
+ThorVG offers great flexibility in building its binary. Besides serving as a general graphics engine, it can be configured as a compact Lottie animation playback library with specific build options:
+
+```
+$meson setup builddir -Dloaders="lottie"
+```
+
+Alternatively, to support additional bitmap image formats:
+
+```
+$meson setup builddir -Dloaders="lottie, png, jpg, webp"
+```
+
+Please note that ThorVG supports Lottie Expressions by default. Lottie Expressions are small JavaScript code snippets that can be applied to animated properties in your Lottie animations, evaluating to a single value. This is an advanced feature in the Lottie specification and may impact binary size and performance, especially when targeting small devices such as MCUs. If this feature is not essential for your requirements, you can disable it using the `extra` build option in ThorVG:
+
+```
+$meson setup builddir -Dloaders="lottie" -Dextra=""
+```
 
 The following code snippet demonstrates how to use ThorVG to play a Lottie animation.
+
 ```cpp
 auto animation = tvg::Animation::gen();     //generate an animation
 auto picture = animation->picture()         //acquire a picture which associated with the animation.
@@ -348,7 +367,7 @@ ThorVG has been integrated into the [Godot](https://www.godotengine.org) project
 </p>
 
 ### LVGL
-[LVGL](https://lvgl.io/) is the most popular free and open-source embedded graphics library to create beautiful UIs for any MCU, MPU and display type. The complete graphic framework includes a variety of widgets for you to use in the creation of your GUI, and supports more advanced functions such as animations and anti-aliasing. ThorVG serves as the vector drawing primitives library in the LVGL framework.
+[LVGL](https://lvgl.io/) is an open-source graphics library specifically designed for embedded systems with limited resources. It is lightweight and highly customizable, providing support for graphical user interfaces (GUIs) on microcontrollers, IoT devices, and other embedded platforms. ThorVG serves as the vector drawing primitives library in the LVGL framework.
 
 <p align="center">
   <img width="700" height="auto" src="https://github.com/thorvg/thorvg/blob/main/res/example_lvgl.png">
@@ -510,6 +529,10 @@ ThorVG stands as a purely open-source initiatives. We are grateful to the indivi
 * [Individuals](https://github.com/thorvg/thorvg/blob/main/AUTHORS)
 * [LottieFiles](https://lottiefiles.com/) by Design Barn Inc.
 * Samsung Electronics Co., Ltd
+ 
+We are also seeking your support to ensure the continued development of the ThorVG project. Your generous donations will help cover operational costs and contribute to the growth of this open-source project. Even a small contribution can make a big difference in securing the future of ThorVG!
+
+* [Open Collective](https://opencollective.com/thorvg)
 
 [Back to contents](#contents)
 <br />

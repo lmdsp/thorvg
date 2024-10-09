@@ -31,9 +31,7 @@ TEST_CASE("Shape Creation", "[tvgShape]")
     auto shape = Shape::gen();
     REQUIRE(shape);
 
-    REQUIRE(shape->identifier() == Shape::identifier());
-    REQUIRE(shape->identifier() != Picture::identifier());
-    REQUIRE(shape->identifier() != Scene::identifier());
+    REQUIRE(shape->type() == Type::Shape);
 }
 
 TEST_CASE("Appending Commands", "[tvgShape]")
@@ -78,18 +76,9 @@ TEST_CASE("Appending Shapes", "[tvgShape]")
     REQUIRE(shape->appendCircle(0, 0, 0, 0) == Result::Success);
     REQUIRE(shape->appendCircle(-99999999.0f, 99999999.0f, 0, 0) == Result::Success);
     REQUIRE(shape->appendCircle(-99999999.0f, 99999999.0f, -99999999.0f, 99999999.0f) == Result::Success);
-
-    REQUIRE(shape->appendArc(0, 0, 0, 0, 0, false) == Result::Success);
-    REQUIRE(shape->appendArc(0, 0, 0, 0, 0, true) == Result::Success);
-    REQUIRE(shape->appendArc(-99999999.0f, 99999999.0f, 0, 0, 0, false) == Result::Success);
-    REQUIRE(shape->appendArc(-99999999.0f, 99999999.0f, 0, 0, 0, true) == Result::Success);
-    REQUIRE(shape->appendArc(-99999999.0f, 99999999.0f, -99999999.0f, 99999999.0f, 0, false) == Result::Success);
-    REQUIRE(shape->appendArc(-99999999.0f, 99999999.0f, -99999999.0f, 99999999.0f, 0, true) == Result::Success);
-    REQUIRE(shape->appendArc(-99999999.0f, 99999999.0f, -99999999.0f, 99999999.0f, -400, false) == Result::Success);
-    REQUIRE(shape->appendArc(-99999999.0f, 99999999.0f, -99999999.0f, 99999999.0f, 400, true) == Result::Success);
 }
 
-TEST_CASE("Appending Pathes", "[tvgShape]")
+TEST_CASE("Appending Paths", "[tvgShape]")
 {
     auto shape = Shape::gen();
     REQUIRE(shape);
@@ -199,16 +188,7 @@ TEST_CASE("Stroking", "[tvgShape]")
     REQUIRE(shape->strokeMiterlimit() == 1000.0f);
     REQUIRE(shape->strokeMiterlimit(-0.001f) == Result::InvalidArguments);
 
-    //Stroke Trim
-    float begin, end;
-    REQUIRE(shape->strokeTrim(&begin, &end) == true);
-    REQUIRE(begin == Approx(0.0).margin(0.000001));
-    REQUIRE(end == Approx(1.0).margin(0.000001));
-
     REQUIRE(shape->strokeTrim(0.3f, 0.88f, false) == Result::Success);
-    REQUIRE(shape->strokeTrim(&begin, &end) == false);
-    REQUIRE(begin == Approx(0.3).margin(0.000001));
-    REQUIRE(end == Approx(0.88).margin(0.000001));
 
     //Stroke Order After Stroke Setting
     REQUIRE(shape->order(true) == Result::Success);

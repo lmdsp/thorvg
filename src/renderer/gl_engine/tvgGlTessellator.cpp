@@ -774,14 +774,14 @@ static int32_t _bezierCurveCount(const Bezier &curve)
     Bezier left{};
     Bezier right{};
 
-    bezSplit(curve, left, right);
+    curve.split(left, right);
 
     return _bezierCurveCount(left) + _bezierCurveCount(right);
 }
 
 static Bezier _bezFromArc(const GlPoint& start, const GlPoint& end, float radius) {
     // Calculate the angle between the start and end points
-    float angle = mathAtan2(end.y - start.y, end.x - start.x);
+    float angle = tvg::atan2(end.y - start.y, end.x - start.x);
 
     // Calculate the control points of the cubic bezier curve
     float c = radius * 0.552284749831;  // c = radius * (4/3) * tan(pi/8)
@@ -980,7 +980,7 @@ void Tessellator::tessellate(const Array<const RenderShape *> &shapes)
 void Tessellator::visitShape(const PathCommand *cmds, uint32_t cmd_count, const Point *pts, uint32_t pts_count)
 {
     // all points at least need to be visit once
-    // so the points cound is at least is the same as the count in shape
+    // so the points count is at least the same as the count in shape
     resGlPoints->reserve(pts_count * 2);
     // triangle fans, the indices count is at least triangles number * 3
     resIndices->reserve((pts_count - 2) * 3);
@@ -1004,7 +1004,7 @@ void Tessellator::visitShape(const PathCommand *cmds, uint32_t cmd_count, const 
                 pts++;
             } break;
             case PathCommand::CubicTo: {
-                // bezier curve needs to calcluate how many segment to split
+                // bezier curve needs to calculate how many segment to split
                 // for now just break curve into 16 segments for convenient
 
                 auto  last = outlines.last();
@@ -1024,7 +1024,7 @@ void Tessellator::visitShape(const PathCommand *cmds, uint32_t cmd_count, const 
                 float step = 1.f / stepCount;
 
                 for (uint32_t s = 1; s < static_cast<uint32_t>(stepCount); s++) {
-                    last->append(pHeap->allocate<detail::Vertex>(detail::_upScalePoint(bezPointAt(curve, step * s))));
+                    last->append(pHeap->allocate<detail::Vertex>(detail::_upScalePoint(curve.at(step * s))));
                 }
 
                 last->append(pHeap->allocate<detail::Vertex>(detail::_upScalePoint(end)));
@@ -1094,7 +1094,7 @@ void Tessellator::mergeVertices()
         }
 
         if (v->point == v->prev->point) {
-            // merve v into v->prev
+            // merge v into v->prev
             while (auto e = v->edge_above.head) {
                 e->setBottom(v->prev);
             }
@@ -1726,7 +1726,7 @@ void Stroker::doStroke(const PathCommand *cmds, uint32_t cmd_count, const Point 
 }
 
 void Stroker::doDashStroke(const PathCommand *cmds, uint32_t cmd_count, const Point *pts, uint32_t pts_count,
-                           uint32_t dast_count, const float *dash_pattern)
+                           uint32_t dash_count, const float *dash_pattern)
 {
     Array<PathCommand> dash_cmds{};
     Array<Point>       dash_pts{};
@@ -1734,7 +1734,7 @@ void Stroker::doDashStroke(const PathCommand *cmds, uint32_t cmd_count, const Po
     dash_cmds.reserve(20 * cmd_count);
     dash_pts.reserve(20 * pts_count);
 
-    DashStroke dash(&dash_cmds, &dash_pts, dast_count, dash_pattern);
+    DashStroke dash(&dash_cmds, &dash_pts, dash_count, dash_pattern);
 
     dash.doStroke(cmds, cmd_count, pts, pts_count);
 
@@ -1838,7 +1838,7 @@ void Stroker::strokeCubicTo(const GlPoint &cnt1, const GlPoint &cnt2, const GlPo
     float step = 1.f / count;
 
     for (int32_t i = 0; i <= count; i++) {
-        strokeLineTo(bezPointAt(curve, step * i));
+        strokeLineTo(curve.at(step * i));
     }
 }
 
@@ -2148,7 +2148,7 @@ void DashStroke::dashCubicTo(const GlPoint &cnt1, const GlPoint &cnt2, const GlP
     cur.ctrl2 = Point{cnt2.x, cnt2.y};
     cur.end = Point{end.x, end.y};
 
-    auto len = bezLength(cur);
+    auto len = cur.length();
 
     if (len < mCurrLen) {
         mCurrLen -= len;
@@ -2162,7 +2162,7 @@ void DashStroke::dashCubicTo(const GlPoint &cnt1, const GlPoint &cnt2, const GlP
 
             Bezier left, right;
 
-            bezSplitAt(cur, mCurrLen, left, right);
+            cur.split(mCurrLen, left, right);
 
             if (mCurrIdx == 0) {
                 this->moveTo(left.start);
@@ -2268,7 +2268,7 @@ void BWTessellator::tessellate(const RenderShape *rshape, const Matrix& matrix)
                 float step = 1.f / stepCount;
 
                 for (uint32_t s = 1; s <= static_cast<uint32_t>(stepCount); s++) {
-                    auto pt = bezPointAt(curve, step * s);
+                    auto pt = curve.at(step * s);
                     auto currIndex = pushVertex(pt.x, pt.y);
 
                     if (prevIndex == 0) {

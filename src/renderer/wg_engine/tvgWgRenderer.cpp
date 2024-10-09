@@ -22,8 +22,6 @@
 
 #include "tvgWgRenderer.h"
 
-#define WG_SSAA_SAMPLES (2)
-
 WgRenderer::WgRenderer()
 {
 }
@@ -39,32 +37,46 @@ WgRenderer::~WgRenderer()
 void WgRenderer::initialize()
 {
     mPipelines.initialize(mContext);
-    mOpacityPool.initialize(mContext);
-    mBlendMethodPool.initialize(mContext);
-    mCompositeMethodPool.initialize(mContext);
     WgMeshDataGroup::gMeshDataPool = new WgMeshDataPool();
-    WgGeometryData::gMath = new WgMath();
-    WgGeometryData::gMath->initialize();
 }
 
 
 void WgRenderer::release()
 {
-    WgGeometryData::gMath->release();
-    delete WgGeometryData::gMath;
+    disposeObjects();
+    mStorageRoot.release(mContext);
+    mRenderStoragePool.release(mContext);
     mRenderDataShapePool.release(mContext);
     WgMeshDataGroup::gMeshDataPool->release(mContext);
     delete WgMeshDataGroup::gMeshDataPool;
     mCompositorStack.clear();
     mRenderStorageStack.clear();
-    mRenderStoragePool.release(mContext);
-    mCompositeMethodPool.release(mContext);
-    mBlendMethodPool.release(mContext);
-    mOpacityPool.release(mContext);
-    mRenderStorageRoot.release(mContext);
-    mRenderStorageScreen.release(mContext);
-    mRenderTarget.release(mContext);
-    mPipelines.release();
+    mPipelines.release(mContext);
+    if (gpuOwner) {
+        if (device) wgpuDeviceRelease(device);
+        device = nullptr;
+        if (adapter) wgpuAdapterRelease(adapter);
+        adapter = nullptr;
+        gpuOwner = false;
+    }
+    releaseSurfaceTexture();
+}
+
+
+void WgRenderer::disposeObjects()
+{
+    if (mDisposeRenderDatas.count == 0) return;
+
+    for (auto p = mDisposeRenderDatas.begin(); p < mDisposeRenderDatas.end(); p++) {
+        auto renderData = (WgRenderDataPaint*)(*p);
+        if (renderData->type() == Type::Shape) {
+            mRenderDataShapePool.free(mContext, (WgRenderDataShape*)renderData);
+        } else {
+            renderData->release(mContext);
+            delete renderData;
+        }
+    }
+    mDisposeRenderDatas.clear();
 }
 
 
@@ -80,25 +92,27 @@ RenderData WgRenderer::prepare(const RenderShape& rshape, RenderData data, const
         renderDataShape->updateMeshes(mContext, rshape, transform);
     }
 
-     // update paint settings
+    // update paint settings
     if ((!data) || (flags & (RenderUpdateFlag::Transform | RenderUpdateFlag::Blend))) {
-        WgShaderTypeMat4x4f modelMat(transform);
-        WgShaderTypeBlendSettings blendSettings(mTargetSurface.cs, opacity);
-        renderDataShape->bindGroupPaint.initialize(mContext.device, mContext.queue, modelMat, blendSettings);
+        renderDataShape->update(mContext, transform, mTargetSurface.cs, opacity);
         renderDataShape->fillRule = rshape.rule;
     }
 
     // setup fill settings
+    renderDataShape->viewport = mViewport;
     renderDataShape->opacity = opacity;
     renderDataShape->renderSettingsShape.update(mContext, rshape.fill, rshape.color, flags);
     if (rshape.stroke)
         renderDataShape->renderSettingsStroke.update(mContext, rshape.stroke->fill, rshape.stroke->color, flags);
 
+    // store clips data
+    renderDataShape->updateClips(clips);
+
     return renderDataShape;
 }
 
 
-RenderData WgRenderer::prepare(Surface* surface, RenderData data, const Matrix& transform, Array<RenderData>& clips, uint8_t opacity, RenderUpdateFlag flags)
+RenderData WgRenderer::prepare(RenderSurface* surface, RenderData data, const Matrix& transform, Array<RenderData>& clips, uint8_t opacity, RenderUpdateFlag flags)
 {
     // get or create render data shape
     auto renderDataPicture = (WgRenderDataPicture*)data;
@@ -106,130 +120,105 @@ RenderData WgRenderer::prepare(Surface* surface, RenderData data, const Matrix& 
         renderDataPicture = new WgRenderDataPicture();
 
     // update paint settings
+    renderDataPicture->viewport = mViewport;
     renderDataPicture->opacity = opacity;
     if (flags & (RenderUpdateFlag::Transform | RenderUpdateFlag::Blend)) {
-        WgShaderTypeMat4x4f modelMat(transform);
-        WgShaderTypeBlendSettings blendSettings(surface->cs, opacity);
-        renderDataPicture->bindGroupPaint.initialize(mContext.device, mContext.queue, modelMat, blendSettings);
+        renderDataPicture->update(mContext, transform, surface->cs, opacity);
     }
 
     // update image data
     if (flags & (RenderUpdateFlag::Path | RenderUpdateFlag::Image)) {
-        WgGeometryData geometryData;
-        geometryData.appendImageBox(surface->w, surface->h);
+        WgVertexBufferInd vertexBufferInd;
+        vertexBufferInd.appendImageBox(surface->w, surface->h);
+        mContext.pipelines->layouts.releaseBindGroup(renderDataPicture->bindGroupPicture);
         renderDataPicture->meshData.release(mContext);
-        renderDataPicture->meshData.update(mContext, &geometryData);
+        renderDataPicture->meshData.update(mContext, vertexBufferInd);
         renderDataPicture->imageData.update(mContext, surface);
-        renderDataPicture->bindGroupPicture.initialize(
-            mContext.device, mContext.queue,
-            mContext.samplerLinear,
-            renderDataPicture->imageData.textureView);
+        renderDataPicture->bindGroupPicture = mContext.pipelines->layouts.createBindGroupTexSampled(
+            mContext.samplerLinearRepeat, renderDataPicture->imageData.textureView
+        );
     }
+
+    // store clips data
+    renderDataPicture->updateClips(clips);
 
     return renderDataPicture;
 }
 
 bool WgRenderer::preRender()
 {
+    // push rot render storage to the render tree stack
+    assert(mRenderStorageStack.count == 0);
+    mRenderStorageStack.push(&mStorageRoot);
+    // create command encoder for drawing
     WGPUCommandEncoderDescriptor commandEncoderDesc{};
-    commandEncoderDesc.nextInChain = nullptr;
-    commandEncoderDesc.label = "The command encoder";
     mCommandEncoder = wgpuDeviceCreateCommandEncoder(mContext.device, &commandEncoderDesc);
-    mRenderStorageStack.push(&mRenderStorageRoot);
-    //mRenderStorageRoot.clear(mCommandEncoder);
-    mRenderStorageRoot.beginRenderPass(mCommandEncoder, true);
+    // start root render pass
+    mCompositor.beginRenderPass(mCommandEncoder, mRenderStorageStack.last(), true);
     return true;
 }
 
 
 bool WgRenderer::renderShape(RenderData data)
 {
-    // get current render storage
-    if (((WgRenderDataShape*)data)->opacity == 0) return 0;
-    WgPipelineBlendType blendType = WgPipelines::blendMethodToBlendType(mBlendMethod);
-    WgRenderStorage* renderStorage = mRenderStorageStack.last();
-    assert(renderStorage);
-    // use hardware blend
-    if (WgPipelines::isBlendMethodSupportsHW(mBlendMethod))
-        renderStorage->renderShape(mContext, (WgRenderDataShape *)data, blendType);
-    else { // use custom blend
-        // terminate current render pass
-        renderStorage->endRenderPass();
-        // render image to render target
-        mRenderTarget.beginRenderPass(mCommandEncoder, true);
-        mRenderTarget.renderShape(mContext, (WgRenderDataShape *)data, blendType);
-        mRenderTarget.endRenderPass();
-        // blend shape with current render storage
-        WgBindGroupBlendMethod* blendMethod = mBlendMethodPool.allocate(mContext, mBlendMethod);
-        renderStorage->blend(mCommandEncoder, &mRenderTarget, blendMethod);
-        // restore current render pass
-        renderStorage->beginRenderPass(mCommandEncoder, false);
-    }
+    // temporary simple render data to the current render target
+    mCompositor.renderShape(mContext, (WgRenderDataShape*)data, mBlendMethod);
     return true;
 }
 
 
 bool WgRenderer::renderImage(RenderData data)
 {
-    // get current render storage
-    WgPipelineBlendType blendType = WgPipelines::blendMethodToBlendType(mBlendMethod);
-    WgRenderStorage* renderStorage = mRenderStorageStack.last();
-    assert(renderStorage);
-    // use hardware blend
-    if (WgPipelines::isBlendMethodSupportsHW(mBlendMethod))
-        renderStorage->renderPicture(mContext, (WgRenderDataPicture *)data, blendType);
-    else { // use custom blend
-        // terminate current render pass
-        renderStorage->endRenderPass();
-        // render image to render target
-        mRenderTarget.beginRenderPass(mCommandEncoder, true);
-        mRenderTarget.renderPicture(mContext, (WgRenderDataPicture *)data, blendType);
-        mRenderTarget.endRenderPass();
-        // blend shape with current render storage
-        WgBindGroupBlendMethod* blendMethod = mBlendMethodPool.allocate(mContext, mBlendMethod);
-        renderStorage->blend(mCommandEncoder, &mRenderTarget, blendMethod);
-        // restore current render pass
-        renderStorage->beginRenderPass(mCommandEncoder, false);
-    }
+    // temporary simple render data to the current render target
+    mCompositor.renderImage(mContext, (WgRenderDataPicture*)data, mBlendMethod);
     return true;
 }
 
 
 bool WgRenderer::postRender()
 {
-    mRenderStorageRoot.endRenderPass();
-    mRenderStorageStack.pop();
-    mContext.executeCommandEncoder(mCommandEncoder);
+    // end root render pass
+    mCompositor.endRenderPass();
+    // release command encoder
+    const WGPUCommandBufferDescriptor commandBufferDesc{};
+    WGPUCommandBuffer commandsBuffer = wgpuCommandEncoderFinish(mCommandEncoder, &commandBufferDesc);
+    wgpuQueueSubmit(mContext.queue, 1, &commandsBuffer);
+    wgpuCommandBufferRelease(commandsBuffer);
     wgpuCommandEncoderRelease(mCommandEncoder);
+    // pop root render storage to the render tree stack
+    mRenderStorageStack.pop();
+    assert(mRenderStorageStack.count == 0);
     return true;
 }
 
 
-void WgRenderer::dispose(RenderData data)
-{
+void WgRenderer::dispose(RenderData data) {
     auto renderData = (WgRenderDataPaint*)data;
     if (renderData) {
-        if (renderData->identifier() == TVG_CLASS_ID_SHAPE)
-            mRenderDataShapePool.free(mContext, (WgRenderDataShape*)renderData);
-        else
-            renderData->release(mContext);
+        ScopedLock lock(mDisposeKey);
+        mDisposeRenderDatas.push(data);
     }
 }
 
 
-RenderRegion WgRenderer::region(TVG_UNUSED RenderData data)
+RenderRegion WgRenderer::region(RenderData data)
 {
-    return { 0, 0, INT32_MAX, INT32_MAX };
+    auto renderData = (WgRenderDataPaint*)data;
+    if (renderData->type() == Type::Shape) {
+        return renderData->aabb;
+    }
+    return { 0, 0, (int32_t)mTargetSurface.w, (int32_t)mTargetSurface.h };
 }
 
 
 RenderRegion WgRenderer::viewport() {
-    return { 0, 0, INT32_MAX, INT32_MAX };
+    return mViewport;
 }
 
 
-bool WgRenderer::viewport(TVG_UNUSED const RenderRegion& vp)
+bool WgRenderer::viewport(const RenderRegion& vp)
 {
+    mViewport = vp;
     return true;
 }
 
@@ -247,7 +236,7 @@ ColorSpace WgRenderer::colorSpace()
 }
 
 
-const Surface* WgRenderer::mainSurface()
+const RenderSurface* WgRenderer::mainSurface()
 {
     return &mTargetSurface;
 }
@@ -259,147 +248,193 @@ bool WgRenderer::clear()
 }
 
 
+void WgRenderer::releaseSurfaceTexture()
+{
+    if (surfaceTexture.texture) {
+        wgpuTextureRelease(surfaceTexture.texture);
+        surfaceTexture.texture = nullptr;
+    }
+}
+
+
 bool WgRenderer::sync()
 {
-    WGPUSurfaceTexture backBuffer{};
-    wgpuSurfaceGetCurrentTexture(mContext.surface, &backBuffer);
-    
-    WGPUCommandEncoderDescriptor commandEncoderDesc{};
-    commandEncoderDesc.nextInChain = nullptr;
-    commandEncoderDesc.label = "The command encoder";
+    disposeObjects();
+    if (!surface) return false;
+
+    releaseSurfaceTexture();
+
+    wgpuSurfaceGetCurrentTexture(surface, &surfaceTexture);
+
+    WGPUTextureView dstView = mContext.createTextureView(surfaceTexture.texture);
+
+    // create command encoder
+    const WGPUCommandEncoderDescriptor commandEncoderDesc{};
     WGPUCommandEncoder commandEncoder = wgpuDeviceCreateCommandEncoder(mContext.device, &commandEncoderDesc);
 
-    mRenderStorageScreen.antialias(commandEncoder, &mRenderStorageRoot);
+    // show root offscreen buffer
+    mCompositor.blit(mContext, commandEncoder, &mStorageRoot, dstView);
 
-    WGPUImageCopyTexture source{};
-    source.texture = mRenderStorageScreen.texColor;
-    WGPUImageCopyTexture dest{};
-    dest.texture = backBuffer.texture;
-    WGPUExtent3D copySize{};
-    copySize.width = mTargetSurface.w;
-    copySize.height = mTargetSurface.h;
-    copySize.depthOrArrayLayers = 1;
-    wgpuCommandEncoderCopyTextureToTexture(commandEncoder, &source, &dest, &copySize);
-
-    mContext.executeCommandEncoder(commandEncoder);
+    // release command encoder
+    const WGPUCommandBufferDescriptor commandBufferDesc{};
+    WGPUCommandBuffer commandsBuffer = wgpuCommandEncoderFinish(commandEncoder, &commandBufferDesc);
+    wgpuQueueSubmit(mContext.queue, 1, &commandsBuffer);
+    wgpuCommandBufferRelease(commandsBuffer);
     wgpuCommandEncoderRelease(commandEncoder);
-    
-    wgpuSurfacePresent(mContext.surface);
+    mContext.releaseTextureView(dstView);
+
     return true;
 }
 
 
 // target for native window handle
-bool WgRenderer::target(WGPUInstance instance, WGPUSurface surface, uint32_t w, uint32_t h)
+bool WgRenderer::target(WGPUInstance instance, WGPUSurface surface, uint32_t w, uint32_t h, WGPUDevice device)
 {
-    // store target surface properties
-    mTargetSurface.stride = w;
-    mTargetSurface.w = w > 0 ? w : 1;
-    mTargetSurface.h = h > 0 ? h : 1;
-    
-    mContext.initialize(instance, surface);
+    gpuOwner = false;
+    this->device = device;
+    if (!this->device) {
+        // request adapter
+        const WGPURequestAdapterOptions requestAdapterOptions { .nextInChain = nullptr, .compatibleSurface = surface, .powerPreference = WGPUPowerPreference_HighPerformance, .forceFallbackAdapter = false };
+        auto onAdapterRequestEnded = [](WGPURequestAdapterStatus status, WGPUAdapter adapter, char const * message, void * pUserData) { *((WGPUAdapter*)pUserData) = adapter; };
+        wgpuInstanceRequestAdapter(instance, &requestAdapterOptions, onAdapterRequestEnded, &this->adapter);
 
-    // configure surface
-    WGPUSurfaceConfiguration surfaceConfiguration{};
-    surfaceConfiguration.nextInChain = nullptr;
-    surfaceConfiguration.device = mContext.device;
-    surfaceConfiguration.format = WGPUTextureFormat_BGRA8Unorm;
-    surfaceConfiguration.usage = WGPUTextureUsage_CopyDst;
-    surfaceConfiguration.viewFormatCount = 0;
-    surfaceConfiguration.viewFormats = nullptr;
-    surfaceConfiguration.alphaMode = WGPUCompositeAlphaMode_Auto;
-    surfaceConfiguration.width = w;
-    surfaceConfiguration.height = h;
-    surfaceConfiguration.presentMode = WGPUPresentMode_Immediate;
-    wgpuSurfaceConfigure(mContext.surface, &surfaceConfiguration);
+        // get adapter and surface properties
+        WGPUFeatureName featureNames[32]{};
+        size_t featuresCount = wgpuAdapterEnumerateFeatures(this->adapter, featureNames);
 
+        // request device
+        const WGPUDeviceDescriptor deviceDesc { .nextInChain = nullptr, .label = "The device", .requiredFeatureCount = featuresCount, .requiredFeatures = featureNames };
+        auto onDeviceRequestEnded = [](WGPURequestDeviceStatus status, WGPUDevice device, char const * message, void * pUserData) { *((WGPUDevice*)pUserData) = device; };
+        wgpuAdapterRequestDevice(this->adapter, &deviceDesc, onDeviceRequestEnded, &this->device);
+        gpuOwner = true;
+    }
+
+    mContext.initialize(instance, this->device);
     initialize();
-    mRenderTarget.initialize(mContext, w, h, WG_SSAA_SAMPLES);
-    mRenderStorageRoot.initialize(mContext, w, h, WG_SSAA_SAMPLES);
-    mRenderStorageScreen.initialize(mContext, w, h, 1, WGPUTextureFormat_BGRA8Unorm);
+    target(surface, w, h);
+    mRenderStoragePool.initialize(mContext, w, h);
+    mStorageRoot.initialize(mContext, w, h);
+    mCompositor.initialize(mContext, w, h);
+    return true;
+}
+
+bool WgRenderer::target(WGPUSurface surface, uint32_t w, uint32_t h) {
+    // store target surface properties
+    this->surface = surface;
+    mTargetSurface.stride = w;
+    mTargetSurface.w = w;
+    mTargetSurface.h = h;
+    if (w == 0 || h == 0) return false;
+    if (!surface) return true;
+
+    WGPUSurfaceConfiguration surfaceConfiguration {
+        .device = mContext.device,
+        .format = mContext.preferredFormat,
+        .usage = WGPUTextureUsage_RenderAttachment,
+    #ifdef __EMSCRIPTEN__
+        .alphaMode = WGPUCompositeAlphaMode_Premultiplied,
+    #endif
+        .width = w, .height = h,
+    #ifdef __EMSCRIPTEN__
+        .presentMode = WGPUPresentMode_Fifo,
+    #else
+        .presentMode = WGPUPresentMode_Immediate
+    #endif
+    };
+    wgpuSurfaceConfigure(surface, &surfaceConfiguration);
 
     return true;
 }
 
 
-Compositor* WgRenderer::target(TVG_UNUSED const RenderRegion& region, TVG_UNUSED ColorSpace cs)
+RenderCompositor* WgRenderer::target(TVG_UNUSED const RenderRegion& region, TVG_UNUSED ColorSpace cs)
 {
-    mCompositorStack.push(new WgCompositor);
+    mCompositorStack.push(new WgCompose);
+    mCompositorStack.last()->aabb = region;
     return mCompositorStack.last();
 }
 
 
-bool WgRenderer::beginComposite(TVG_UNUSED Compositor* cmp, TVG_UNUSED CompositeMethod method, TVG_UNUSED uint8_t opacity)
+bool WgRenderer::beginComposite(RenderCompositor* cmp, CompositeMethod method, uint8_t opacity)
 {
     // save current composition settings
-    WgCompositor *comp = (WgCompositor*)cmp;
-    comp->method = method;
-    comp->opacity = opacity;
-    comp->blendMethod = mBlendMethod;
-
+    WgCompose* compose = (WgCompose *)cmp;
+    compose->method = method;
+    compose->opacity = opacity;
+    compose->blend = mBlendMethod;
     // end current render pass
-    mRenderStorageStack.last()->endRenderPass();
-    // allocate new render storage and push it to top of render tree
-    WgRenderStorage* renderStorage = mRenderStoragePool.allocate(mContext, mTargetSurface.w, mTargetSurface.h, WG_SSAA_SAMPLES);
-    mRenderStorageStack.push(renderStorage);
-    // begin last render pass
-    mRenderStorageStack.last()->beginRenderPass(mCommandEncoder, true);
+    mCompositor.endRenderPass();
+    // allocate new render storage and push to the render tree stack
+    WgRenderStorage* storage = mRenderStoragePool.allocate(mContext);
+    mRenderStorageStack.push(storage);
+    // begin newly added render pass
+    mCompositor.beginRenderPass(mCommandEncoder, mRenderStorageStack.last(), true);
     return true;
 }
 
 
-bool WgRenderer::endComposite(TVG_UNUSED Compositor* cmp)
+bool WgRenderer::endComposite(RenderCompositor* cmp)
 {
-    WgCompositor *comp = (WgCompositor*)cmp;
+    // get current composition settings
+    WgCompose* comp = (WgCompose *)cmp;
+    // end current render pass
+    mCompositor.endRenderPass();
+    // finish scene blending
     if (comp->method == CompositeMethod::None) {
-        // end current render pass
-        mRenderStorageStack.last()->endRenderPass();
-        // get two last render targets
-        WgRenderStorage* renderStorageSrc = mRenderStorageStack.last();
+        // get source and destination render storages
+        WgRenderStorage* src = mRenderStorageStack.last();
         mRenderStorageStack.pop();
-    
-        // blent scene to current render storage
-        WgBindGroupBlendMethod* blendMethod = mBlendMethodPool.allocate(mContext, comp->blendMethod);
-        mRenderStorageStack.last()->blend(mCommandEncoder, renderStorageSrc, blendMethod);
-
+        WgRenderStorage* dst = mRenderStorageStack.last();
+        // apply normal blend
+        if (comp->blend == BlendMethod::Normal) {
+            // begin previous render pass
+            mCompositor.beginRenderPass(mCommandEncoder, dst, false);
+            // apply blend
+            mCompositor.blendScene(mContext, src, comp);
+        // apply custom blend
+        } else {
+            // apply custom blend
+            mCompositor.blend(mCommandEncoder, src, dst, comp->opacity, comp->blend, WgRenderRasterType::Image);
+            // begin previous render pass
+            mCompositor.beginRenderPass(mCommandEncoder, dst, false);
+        }
         // back render targets to the pool
-        mRenderStoragePool.free(mContext, renderStorageSrc);
-        // begin last render pass
-        mRenderStorageStack.last()->beginRenderPass(mCommandEncoder, false);
-    } else {
-        // end current render pass
-        mRenderStorageStack.last()->endRenderPass();
-
+        mRenderStoragePool.free(mContext, src);
+    } else { // finish composition
         // get source, mask and destination render storages
-        WgRenderStorage* renderStorageSrc = mRenderStorageStack.last();
+        WgRenderStorage* src = mRenderStorageStack.last();
         mRenderStorageStack.pop();
-        WgRenderStorage* renderStorageMsk = mRenderStorageStack.last();
+        WgRenderStorage* msk = mRenderStorageStack.last();
         mRenderStorageStack.pop();
-        WgRenderStorage* renderStorageDst = mRenderStorageStack.last();
-
-        // get compose, blend and opacity settings
-        WgBindGroupCompositeMethod* composeMethod = mCompositeMethodPool.allocate(mContext, comp->method);
-        WgBindGroupBlendMethod* blendMethod = mBlendMethodPool.allocate(mContext, mBlendMethod);
-        WgBindGroupOpacity* opacity = mOpacityPool.allocate(mContext, comp->opacity);
-
-        // compose and blend
-        // dest = blend(dest, compose(src, msk, composeMethod), blendMethod, opacity)
-        renderStorageDst->composeBlend(mContext, mCommandEncoder,
-            renderStorageSrc, renderStorageMsk,
-            composeMethod, blendMethod, opacity);
-
+        WgRenderStorage* dst = mRenderStorageStack.last();
+        // begin previous render pass
+        mCompositor.beginRenderPass(mCommandEncoder, dst, false);
+        // apply composition
+        mCompositor.composeScene(mContext, src, msk, comp);
         // back render targets to the pool
-        mRenderStoragePool.free(mContext, renderStorageSrc);
-        mRenderStoragePool.free(mContext, renderStorageMsk);
-        // begin last render pass
-        mRenderStorageStack.last()->beginRenderPass(mCommandEncoder, false);
+        mRenderStoragePool.free(mContext, src);
+        mRenderStoragePool.free(mContext, msk);
     }
 
-    // delete current compositor
+    // delete current compositor settings
     delete mCompositorStack.last();
     mCompositorStack.pop();
 
     return true;
+}
+
+
+bool WgRenderer::prepare(TVG_UNUSED RenderEffect* effect)
+{
+    //TODO: Return if the current post effect requires the region expansion
+    return false;
+}
+
+
+bool WgRenderer::effect(TVG_UNUSED RenderCompositor* cmp, TVG_UNUSED const RenderEffect* effect)
+{
+    TVGLOG("WG_ENGINE", "SceneEffect(%d) is not supported", (int)effect->type);
+    return false;
 }
 
 

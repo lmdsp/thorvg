@@ -36,7 +36,7 @@ TEST_CASE("Animation Basic", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier() == Picture::identifier());
+    REQUIRE(picture->type() == Type::Picture);
 
     //Negative cases
     REQUIRE(animation->frame(0.0f) == Result::InsufficientCondition);
@@ -55,7 +55,6 @@ TEST_CASE("Animation Frames Counting", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test.json") == Result::Success);
 
@@ -93,7 +92,6 @@ TEST_CASE("Animation Lottie", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/invalid.json") == Result::InvalidArguments);
     REQUIRE(picture->load(TEST_DIR"/test.json") == Result::Success);
@@ -114,9 +112,15 @@ TEST_CASE("Animation Lottie2", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test2.json") == Result::Success);
+
+    //Find specific paint nodes
+    REQUIRE(!picture->paint(Accessor::id("test1")));
+    REQUIRE(!picture->paint(Accessor::id("abcd")));
+    REQUIRE(!picture->paint(Accessor::id("abcd")));
+    REQUIRE(picture->paint(Accessor::id("bar")));
+    REQUIRE(picture->paint(Accessor::id("pad1")));
 
     REQUIRE(animation->frame(20.0f) == Result::Success);
 
@@ -131,7 +135,6 @@ TEST_CASE("Animation Lottie3", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test3.json") == Result::Success);
     
@@ -146,7 +149,6 @@ TEST_CASE("Animation Lottie4", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test4.json") == Result::Success);
 
@@ -161,7 +163,6 @@ TEST_CASE("Animation Lottie5", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test5.json") == Result::Success);
     
@@ -176,7 +177,6 @@ TEST_CASE("Animation Lottie6", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test6.json") == Result::Success);
 
@@ -191,7 +191,6 @@ TEST_CASE("Animation Lottie7", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test7.json") == Result::Success);
 
@@ -206,7 +205,6 @@ TEST_CASE("Animation Lottie8", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test8.json") == Result::Success);
 
@@ -221,7 +219,6 @@ TEST_CASE("Animation Lottie9", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier() == Picture::identifier());
 
     REQUIRE(picture->load(TEST_DIR"/test9.json") == Result::Success);
 
@@ -236,11 +233,49 @@ TEST_CASE("Animation Lottie10", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier() == Picture::identifier());
     
     REQUIRE(picture->load(TEST_DIR"/test10.json") == Result::Success);
 
     REQUIRE(Initializer::term(CanvasEngine::Sw) == Result::Success);
+}
+
+TEST_CASE("Animation Lottie11", "[tvgAnimation]")
+{
+    REQUIRE(Initializer::init(tvg::CanvasEngine::Sw, 0) == Result::Success);
+
+    auto animation = Animation::gen();
+    REQUIRE(animation);
+
+    auto picture = animation->picture();
+
+    ifstream file(TEST_DIR"/test11.json");
+    REQUIRE(file.is_open());
+    file.seekg(0, std::ios::end);
+    auto size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    auto data = (char*)malloc(size);
+    file.seekg(0, ios::beg);
+    file.read(data, size);
+    file.close();
+    REQUIRE(picture->load(data, size, "json", true) == Result::Success);
+
+    free(data);
+
+    REQUIRE(Initializer::term(tvg::CanvasEngine::Sw) == Result::Success);
+}
+
+TEST_CASE("Animation Lottie12", "[tvgAnimation]")
+{
+    REQUIRE(Initializer::init(tvg::CanvasEngine::Sw, 0) == Result::Success);
+
+    auto animation = Animation::gen();
+    REQUIRE(animation);
+
+    auto picture = animation->picture();
+
+    REQUIRE(picture->load(TEST_DIR"/test12.json") == Result::Success);
+
+    REQUIRE(Initializer::term(tvg::CanvasEngine::Sw) == Result::Success);
 }
 
 TEST_CASE("Animation Segment", "[tvgAnimation]")
@@ -251,7 +286,6 @@ TEST_CASE("Animation Segment", "[tvgAnimation]")
     REQUIRE(animation);
 
     auto picture = animation->picture();
-    REQUIRE(picture->identifier() == Picture::identifier());
 
     float begin, end;
 

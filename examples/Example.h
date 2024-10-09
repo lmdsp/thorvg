@@ -25,7 +25,6 @@
 #include <vector>
 #include <fstream>
 #include <iostream>
-#include <thread>
 #include <thorvg.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_syswm.h>
@@ -59,12 +58,15 @@ using namespace std;
 namespace tvgexam
 {
 
-bool verify(tvg::Result result);
+bool verify(tvg::Result result, string failMsg = "");
 
 struct Example
 {
+    uint32_t elapsed = 0.0f;
+
     virtual bool content(tvg::Canvas* canvas, uint32_t w, uint32_t h) = 0;
     virtual bool update(tvg::Canvas* canvas, uint32_t elapsed) { return false; }
+    virtual bool clicked(tvg::Canvas* canvas, int32_t x, int32_t y) { return false; }
     virtual void populate(const char* path) {}
     virtual ~Example() {}
 
@@ -123,8 +125,6 @@ struct Example
 
 struct Window
 {
-    static Window* instance;
-
     SDL_Window* window = nullptr;
 
     tvg::CanvasEngine engine;
@@ -136,15 +136,13 @@ struct Window
 
     bool needResize = false;
     bool needDraw = false;
+    bool initialized = false;
     bool print = false;
 
-    Window(tvg::CanvasEngine engine, Example* example, uint32_t width, uint32_t height)
+    Window(tvg::CanvasEngine engine, Example* example, uint32_t width, uint32_t height, uint32_t threadsCnt)
     {
-        //Initialize ThorVG Engine (4: threads count, engine: raster method)
-        if (!verify(tvg::Initializer::init(engine, 4))) {
-            cout << "Failed to init ThorVG engine!" << endl;
-            return;
-        }
+        //Initialize ThorVG Engine (engine: raster method)
+        if (!verify(tvg::Initializer::init(engine, threadsCnt), "Failed to init ThorVG engine!")) return;
 
         //Initialize the SDL
         SDL_Init(SDL_INIT_VIDEO);
@@ -153,8 +151,7 @@ struct Window
         this->width = width;
         this->height = height;
         this->example = example;
-        this->engine = engine;
-        this->instance = this;
+        this->initialized = true;
     }
 
     virtual ~Window()
@@ -203,7 +200,7 @@ struct Window
         auto running = true;
 
         auto ptime = SDL_GetTicks();
-        auto elapsed = 0;
+        example->elapsed = 0;
         uint32_t tickCnt = 0;
 
         while (running) {
@@ -218,6 +215,12 @@ struct Window
                     case SDL_KEYUP: {
                         if (event.key.keysym.sym == SDLK_ESCAPE) {
                             running = false;
+                        }
+                        break;
+                    }
+                    case SDL_MOUSEBUTTONDOWN: {
+                        if (example->clicked(canvas, event.button.x, event.button.y)) {
+                            needDraw = true;
                         }
                         break;
                     }
@@ -238,7 +241,7 @@ struct Window
             }
 
             if (tickCnt > 0) {
-                if (example->update(canvas, elapsed)) {
+                if (example->update(canvas, example->elapsed)) {
                     needDraw = true;
                 }
             }
@@ -249,9 +252,9 @@ struct Window
             }
 
             auto ctime = SDL_GetTicks();
-            elapsed += (ctime - ptime);
+            example->elapsed += (ctime - ptime);
             tickCnt++;
-            if (print) printf("[%5d]: elapsed time = %dms (%dms)\n", tickCnt, (ctime - ptime), (elapsed / tickCnt));
+            if (print) printf("[%5d]: elapsed time = %dms (%dms)\n", tickCnt, (ctime - ptime), (example->elapsed / tickCnt));
             ptime = ctime;
         }
     }
@@ -259,8 +262,6 @@ struct Window
     virtual void resize() {}
     virtual void refresh() {}
 };
-
-Window* Window::instance = nullptr;
 
 
 /************************************************************************/
@@ -271,8 +272,10 @@ struct SwWindow : Window
 {
     unique_ptr<tvg::SwCanvas> canvas = nullptr;
 
-    SwWindow(Example* example, uint32_t width, uint32_t height) : Window(tvg::CanvasEngine::Sw, example, width, height)
+    SwWindow(Example* example, uint32_t width, uint32_t height, uint32_t threadsCnt) : Window(tvg::CanvasEngine::Sw, example, width, height, threadsCnt)
     {
+        if (!initialized) return;
+
         window = SDL_CreateWindow("ThorVG Example (Software)", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE);
 
         //Create a Canvas
@@ -312,8 +315,10 @@ struct GlWindow : Window
 
     unique_ptr<tvg::GlCanvas> canvas = nullptr;
 
-    GlWindow(Example* example, uint32_t width, uint32_t height) : Window(tvg::CanvasEngine::Gl, example, width, height)
+    GlWindow(Example* example, uint32_t width, uint32_t height, uint32_t threadsCnt) : Window(tvg::CanvasEngine::Gl, example, width, height, threadsCnt)
     {
+        if (!initialized) return;
+
 #ifdef THORVG_GL_TARGET_GLES
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
@@ -368,8 +373,10 @@ struct WgWindow : Window
     WGPUInstance instance;
     WGPUSurface surface;
 
-    WgWindow(Example* example, uint32_t width, uint32_t height) : Window(tvg::CanvasEngine::Wg, example, width, height)
+    WgWindow(Example* example, uint32_t width, uint32_t height, uint32_t threadsCnt) : Window(tvg::CanvasEngine::Wg, example, width, height, threadsCnt)
     {
+        if (!initialized) return;
+
         window = SDL_CreateWindow("ThorVG Example (WebGPU)", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_HIDDEN);
 
         //Here we create our WebGPU surface from the window!
@@ -429,7 +436,7 @@ struct WgWindow : Window
 
     virtual ~WgWindow()
     {
-        //wgpuSurfaceRelease(surface);
+        wgpuSurfaceRelease(surface);
         wgpuInstanceRelease(instance);
     }
 
@@ -438,12 +445,17 @@ struct WgWindow : Window
         //Set the canvas target and draw on it.
         verify(canvas->target(instance, surface, width, height));
     }
+
+    void refresh() override 
+    {
+        wgpuSurfacePresent(surface);
+    }
 };
 
 #else
 struct WgWindow : Window
 {
-    WgWindow(Example* example, uint32_t width, uint32_t height) : Window(tvg::CanvasEngine::Wg, example, width, height)
+    WgWindow(Example* example, uint32_t width, uint32_t height, uint32_t threadsCnt) : Window(tvg::CanvasEngine::Wg, example, width, height, threadsCnt)
     {
         cout << "webgpu driver is not detected!" << endl;
     }
@@ -455,6 +467,7 @@ struct WgWindow : Window
 float progress(uint32_t elapsed, float durationInSec, bool rewind = false)
 {
     auto duration = uint32_t(durationInSec * 1000.0f); //sec -> millisec.
+    if (duration == 0.0f) return 0.0f;
     auto forward = ((elapsed / duration) % 2 == 0) ? true : false;
     auto clamped = elapsed % duration;
     auto progress = ((float)clamped / (float)duration);
@@ -463,31 +476,31 @@ float progress(uint32_t elapsed, float durationInSec, bool rewind = false)
 }
 
 
-bool verify(tvg::Result result)
+bool verify(tvg::Result result, string failMsg)
 {
     switch (result) {
         case tvg::Result::FailedAllocation: {
-            cout << "FailedAllocation!" << endl;
+            cout << "FailedAllocation! " << failMsg << endl;
             return false;
         }
         case tvg::Result::InsufficientCondition: {
-            cout << "InsufficientCondition!" << endl;
+            cout << "InsufficientCondition! " << failMsg << endl;
             return false;
         }
         case tvg::Result::InvalidArguments: {
-            cout << "InvalidArguments!" << endl;
+            cout << "InvalidArguments! " << failMsg << endl;
             return false;
         }
         case tvg::Result::MemoryCorruption: {
-            cout << "MemoryCorruption!" << endl;
+            cout << "MemoryCorruption! " << failMsg << endl;
             return false;
         }
         case tvg::Result::NonSupport: {
-            cout << "NonSupport!" << endl;
+            cout << "NonSupport! " << failMsg << endl;
             return false;
         }
         case tvg::Result::Unknown: {
-            cout << "Unknown!" << endl;
+            cout << "Unknown! " << failMsg << endl;
             return false;
         }
         default: break;
@@ -496,7 +509,7 @@ bool verify(tvg::Result result)
 }
 
 
-int main(Example* example, int argc, char **argv, uint32_t width = 800, uint32_t height = 800, bool print = false)
+int main(Example* example, int argc, char **argv, uint32_t width = 800, uint32_t height = 800, uint32_t threadsCnt = 4, bool print = false)
 {
     auto engine = tvg::CanvasEngine::Sw;
 
@@ -508,11 +521,11 @@ int main(Example* example, int argc, char **argv, uint32_t width = 800, uint32_t
     unique_ptr<Window> window;
 
     if (engine == tvg::CanvasEngine::Sw) {
-        window = unique_ptr<Window>(new SwWindow(example, width, height));
+        window = unique_ptr<Window>(new SwWindow(example, width, height, threadsCnt));
     } else if (engine == tvg::CanvasEngine::Gl) {
-        window = unique_ptr<Window>(new GlWindow(example, width, height));
+        window = unique_ptr<Window>(new GlWindow(example, width, height, threadsCnt));
     } else if (engine == tvg::CanvasEngine::Wg) {
-        window = unique_ptr<Window>(new WgWindow(example, width, height));
+        window = unique_ptr<Window>(new WgWindow(example, width, height, threadsCnt));
     }
 
     window->print = print;

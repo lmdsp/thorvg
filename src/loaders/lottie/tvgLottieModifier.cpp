@@ -29,9 +29,9 @@
 
 static void _roundCorner(Array<PathCommand>& cmds, Array<Point>& pts, const Point& prev, const Point& curr, const Point& next, float r)
 {
-    auto lenPrev = mathLength(prev - curr);
+    auto lenPrev = length(prev - curr);
     auto rPrev = lenPrev > 0.0f ? 0.5f * std::min(lenPrev * 0.5f, r) / lenPrev : 0.0f;
-    auto lenNext = mathLength(next - curr);
+    auto lenNext = length(next - curr);
     auto rNext = lenNext > 0.0f ? 0.5f * std::min(lenNext * 0.5f, r) / lenNext : 0.0f;
 
     auto dPrev = rPrev * (curr - prev);
@@ -78,7 +78,7 @@ static bool _intersect(const Line& line1, const Line& line2, Point& intersection
 
 static Line _offset(const Point& p1, const Point& p2, float offset)
 {
-    auto scaledNormal = mathNormal(p1, p2) * offset;
+    auto scaledNormal = normal(p1, p2) * offset;
     return {p1 - scaledNormal, p2 - scaledNormal};
 }
 
@@ -99,9 +99,9 @@ void LottieOffsetModifier::corner(const Line& line, const Line& nextLine, uint32
                 outPts.push((nextLine.pt1 + intersect) * 0.5f);
                 outPts.push(nextLine.pt1);
             } else if (join == StrokeJoin::Miter) {
-                auto norm = mathNormal(line.pt1, line.pt2);
-                auto nextNorm = mathNormal(nextLine.pt1, nextLine.pt2);
-                auto miterDirection = (norm + nextNorm) / mathLength(norm + nextNorm);
+                auto norm = normal(line.pt1, line.pt2);
+                auto nextNorm = normal(nextLine.pt1, nextLine.pt2);
+                auto miterDirection = (norm + nextNorm) / length(norm + nextNorm);
                 outCmds.push(PathCommand::LineTo);
                 if (1.0f <= miterLimit * fabsf(miterDirection.x * norm.x + miterDirection.y * norm.y)) outPts.push(intersect);
                 else outPts.push(nextLine.pt1);
@@ -115,7 +115,7 @@ void LottieOffsetModifier::corner(const Line& line, const Line& nextLine, uint32
 
 void LottieOffsetModifier::line(const PathCommand* inCmds, uint32_t inCmdsCnt, const Point* inPts, uint32_t& currentPt, uint32_t currentCmd, State& state, bool degenerated, Array<PathCommand>& outCmds, Array<Point>& outPts, float offset) const
 {
-    if (mathZero(inPts[currentPt - 1] - inPts[currentPt])) {
+    if (tvg::zero(inPts[currentPt - 1] - inPts[currentPt])) {
         ++currentPt;
         return;
     }
@@ -131,7 +131,7 @@ void LottieOffsetModifier::line(const PathCommand* inCmds, uint32_t inCmdsCnt, c
     }
 
     auto nonDegeneratedCubic = [&](uint32_t cmd, uint32_t pt) {
-        return inCmds[cmd] == PathCommand::CubicTo && !mathZero(inPts[pt] - inPts[pt + 1]) && !mathZero(inPts[pt + 2] - inPts[pt + 3]);
+        return inCmds[cmd] == PathCommand::CubicTo && !tvg::zero(inPts[pt] - inPts[pt + 1]) && !tvg::zero(inPts[pt + 2] - inPts[pt + 3]);
     };
 
     outCmds.push(PathCommand::LineTo);
@@ -177,11 +177,11 @@ bool LottieRoundnessModifier::modifyPath(const PathCommand* inCmds, uint32_t inC
                 auto& prev = inPts[iPts - 1];
                 auto& curr = inPts[iPts + 2];
                 if (iCmds < inCmdsCnt - 1 &&
-                    mathZero(inPts[iPts - 1] - inPts[iPts]) &&
-                    mathZero(inPts[iPts + 1] - inPts[iPts + 2])) {
+                    tvg::zero(inPts[iPts - 1] - inPts[iPts]) &&
+                    tvg::zero(inPts[iPts + 1] - inPts[iPts + 2])) {
                     if (inCmds[iCmds + 1] == PathCommand::CubicTo &&
-                        mathZero(inPts[iPts + 2] - inPts[iPts + 3]) &&
-                        mathZero(inPts[iPts + 4] - inPts[iPts + 5])) {
+                        tvg::zero(inPts[iPts + 2] - inPts[iPts + 3]) &&
+                        tvg::zero(inPts[iPts + 4] - inPts[iPts + 5])) {
                         _roundCorner(outCmds, outPts, prev, curr, inPts[iPts + 5], r);
                         iPts += 3;
                         break;
@@ -218,14 +218,14 @@ bool LottieRoundnessModifier::modifyPolystar(TVG_UNUSED const Array<PathCommand>
 {
     static constexpr auto ROUNDED_POLYSTAR_MAGIC_NUMBER = 0.47829f;
 
-    auto len = mathLength(inPts[1] - inPts[2]);
+    auto len = length(inPts[1] - inPts[2]);
     auto r = len > 0.0f ? ROUNDED_POLYSTAR_MAGIC_NUMBER * std::min(len * 0.5f, this->r) / len : 0.0f;
 
     if (hasRoundness) {
         outCmds.grow((uint32_t)(1.5 * inCmds.count));
         outPts.grow((uint32_t)(4.5 * inCmds.count));
 
-        int start = 3 * mathZero(outerRoundness);
+        int start = 3 * tvg::zero(outerRoundness);
         outCmds.push(PathCommand::MoveTo);
         outPts.push(inPts[start]);
 
@@ -304,7 +304,7 @@ bool LottieOffsetModifier::modifyPath(const PathCommand* inCmds, uint32_t inCmds
             line(inCmds, inCmdsCnt, inPts, iPt, iCmd, state, false, outCmds, outPts, offset);
         } else if (inCmds[iCmd] == PathCommand::CubicTo) {
             //cubic degenerated to a line
-            if (mathZero(inPts[iPt - 1] - inPts[iPt]) || mathZero(inPts[iPt + 1] - inPts[iPt + 2])) {
+            if (tvg::zero(inPts[iPt - 1] - inPts[iPt]) || tvg::zero(inPts[iPt + 1] - inPts[iPt + 2])) {
                 ++iPt;
                 line(inCmds, inCmdsCnt, inPts, iPt, iCmd, state, true, outCmds, outPts, offset);
                 ++iPt;

@@ -25,7 +25,6 @@
 
 #include "tvgCommon.h"
 #include "tvgArray.h"
-#include "tvgLines.h"
 #include "tvgMath.h"
 
 

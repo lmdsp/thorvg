@@ -23,67 +23,34 @@
 #ifndef _TVG_WG_RENDER_TARGET_H_
 #define _TVG_WG_RENDER_TARGET_H_
 
-#include "tvgWgRenderData.h"
+#include "tvgWgPipelines.h"
+#include "tvgRender.h"
 
-class WgRenderStorage {
-private:
-    // texture buffers
-    WgBindGroupCanvas mBindGroupCanvas;
-    WGPURenderPassEncoder mRenderPassEncoder{};
-    WgPipelines* mPipelines{}; // external handle
-public:
-    WGPUTexture texColor{};
-    WGPUTexture texStencil{};
-    WGPUTextureView texViewColor{};
-    WGPUTextureView texViewStencil{};
-    WgBindGroupTextureStorageRgba bindGroupTexStorageRgba;
-    WgBindGroupTextureStorageBgra bindGroupTexStorageBgra;
+struct WgRenderStorage {
+    WGPUTexture texture{};
+    WGPUTextureView texView{};
+    WGPUBindGroup bindGroupRead{};
+    WGPUBindGroup bindGroupWrite{};
+    WGPUBindGroup bindGroupTexure{};
     uint32_t width{};
     uint32_t height{};
-    uint32_t workgroupsCountX{};
-    uint32_t workgroupsCountY{};
-public:
-    void initialize(WgContext& context, uint32_t w, uint32_t h, uint32_t samples = 1, WGPUTextureFormat format = WGPUTextureFormat_RGBA8Unorm);
+
+    void initialize(WgContext& context, uint32_t width, uint32_t height);
     void release(WgContext& context);
-
-    void beginRenderPass(WGPUCommandEncoder commandEncoder, bool clear);
-    void endRenderPass();
-
-    void renderShape(WgContext& context, WgRenderDataShape* renderData, WgPipelineBlendType blendType);
-    void renderPicture(WgContext& context, WgRenderDataPicture* renderData, WgPipelineBlendType blendType);
-
-    void clear(WGPUCommandEncoder commandEncoder);
-    void blend(WGPUCommandEncoder commandEncoder, WgRenderStorage* targetSrc, WgBindGroupBlendMethod* blendMethod);
-    void compose(WGPUCommandEncoder commandEncoder, WgRenderStorage* targetMsk, WgBindGroupCompositeMethod* composeMethod, WgBindGroupOpacity* opacity);
-    void composeBlend(
-        WgContext& context,
-        WGPUCommandEncoder commandEncoder,
-        WgRenderStorage* texMsk,
-        WgRenderStorage* texSrc,
-        WgBindGroupCompositeMethod* composeMethod,
-        WgBindGroupBlendMethod* blendMethod,
-        WgBindGroupOpacity* opacity);
-    void antialias(WGPUCommandEncoder commandEncoder, WgRenderStorage* targetSrc);
-private:
-    void drawShape(WgContext& context, WgRenderDataShape* renderData, WgPipelineBlendType blendType);
-    void drawStroke(WgContext& context, WgRenderDataShape* renderData, WgPipelineBlendType blendType);
-
-    void dispatchWorkgroups(WGPUComputePassEncoder computePassEncoder);
-
-    WGPUComputePassEncoder beginComputePass(WGPUCommandEncoder commandEncoder);
-    void endComputePass(WGPUComputePassEncoder computePassEncoder);
 };
 
 
 class WgRenderStoragePool {
 private:
-   Array<WgRenderStorage*> mList;
-   Array<WgRenderStorage*> mPool;
+    Array<WgRenderStorage*> list;
+    Array<WgRenderStorage*> pool;
+    uint32_t width{};
+    uint32_t height{};
 public:
-   WgRenderStorage* allocate(WgContext& context, uint32_t w, uint32_t h, uint32_t samples = 1);
-   void free(WgContext& context, WgRenderStorage* renderTarget);
-   void release(WgContext& context);
+    WgRenderStorage* allocate(WgContext& context);
+    void free(WgContext& context, WgRenderStorage* renderTarget);
+
+    void initialize(WgContext& context, uint32_t width, uint32_t height);
+    void release(WgContext& context);
 };
-
-
-#endif
+#endif // _TVG_WG_RENDER_TARGET_H_

@@ -116,7 +116,7 @@ void contents()
     //Set a gradient fill
     tvg_shape_set_radial_gradient(shape3, grad2);
 
-    //Prepaer a radial gradient for the stroke
+    //Prepare a radial gradient for the stroke
     uint32_t cnt;
     const Tvg_Color_Stop* color_stops2_get;
     tvg_gradient_get_color_stops(grad2, &color_stops2_get, &cnt);
@@ -143,18 +143,18 @@ void contents()
     //Set a scene
     Tvg_Paint* scene = tvg_scene_new();
 
-    //Set an arc
+    //Set circles
     Tvg_Paint* scene_shape1 = tvg_shape_new();
-    tvg_shape_append_arc(scene_shape1, 175.0f, 600.0f, 150.0f, -45.0f, 90.0f, 1);
-    tvg_shape_append_arc(scene_shape1, 175.0f, 600.0f, 150.0f, 225.0f, -90.0f, 1);
+    tvg_shape_append_circle(scene_shape1, 80.0f, 650.f, 40.0f, 140.0f);
+    tvg_shape_append_circle(scene_shape1, 180.0f, 600.f, 40.0f, 60.0f);
     tvg_shape_set_fill_color(scene_shape1, 0, 0, 255, 150);
-    tvg_shape_set_stroke_color(scene_shape1, 255, 255, 255, 155);
+    tvg_shape_set_stroke_color(scene_shape1, 75, 25, 155, 255);
     tvg_shape_set_stroke_width(scene_shape1, 10.0f);
     tvg_shape_set_stroke_cap(scene_shape1, Tvg_Stroke_Cap::TVG_STROKE_CAP_ROUND);
     tvg_shape_set_stroke_join(scene_shape1, Tvg_Stroke_Join::TVG_STROKE_JOIN_ROUND);
     tvg_shape_set_stroke_trim(scene_shape1, 0.25f, 0.75f, true);
 
-    //Set an arc with a dashed stroke
+    //Set circles with a dashed stroke
     Tvg_Paint* scene_shape2 = tvg_paint_duplicate(scene_shape1);
     tvg_shape_set_fill_color(scene_shape2, 75, 25, 155, 200);
 
@@ -166,9 +166,9 @@ void contents()
     tvg_shape_set_stroke_width(scene_shape2, 15.0f);
 
     //Transform a shape
-    tvg_paint_scale(scene_shape2, 0.7f);
+    tvg_paint_scale(scene_shape2, 0.8f);
     tvg_paint_rotate(scene_shape2, -90.0f);
-    tvg_paint_translate(scene_shape2, -245.0f, 722.0f);
+    tvg_paint_translate(scene_shape2, -200.0f, 800.0f);
 
     //Push the shapes into the scene
     tvg_scene_push(scene, scene_shape1);
@@ -201,15 +201,35 @@ void contents()
     }
 
 //////6. Animation with a picture
+    //instead loading from a memory, an animation can be loaded directly from a file using:
+    //tvg_picture_load(pict_lottie, EXAMPLE_DIR"/lottie/sample.json")
+    FILE *file = fopen(EXAMPLE_DIR"/lottie/sample.json", "r");
+    if (file == NULL) return;
+    fseek(file, 0, SEEK_END);
+    long data_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    auto data = (char*)malloc(data_size + 1);
+    if (!data) return;
+    if (fread(data, 1, data_size, file) != (size_t)data_size) {
+        free(data);
+        fclose(file);
+        return;
+    }
+    //ensure null-termination in case tvg_picture_load_data is called with copy = false
+    data[data_size++] = '\0';
+
     animation = tvg_animation_new();
     Tvg_Paint* pict_lottie = tvg_animation_get_picture(animation);
-    if (tvg_picture_load(pict_lottie, EXAMPLE_DIR"/lottie/sample.json") != TVG_RESULT_SUCCESS) {
-        printf("Problem with loading an lottie file\n");
+    if (tvg_picture_load_data(pict_lottie, data, data_size, nullptr, false) != TVG_RESULT_SUCCESS) {
+        printf("Problem with loading a lottie file\n");
         tvg_animation_del(animation);
     } else {
         tvg_paint_scale(pict_lottie, 3.0f);
         tvg_canvas_push(canvas, pict_lottie);
     }
+
+    free(data);
+    fclose(file);
 
 //////7. Text
     //load from a file
@@ -224,12 +244,12 @@ void contents()
         tvg_canvas_push(canvas, text);
     }
     //load from a memory
-    FILE *file = fopen(EXAMPLE_DIR"/font/SentyCloud.ttf", "rb");
+    file = fopen(EXAMPLE_DIR"/font/SentyCloud.ttf", "rb");
     if (file == NULL) return;
     fseek(file, 0, SEEK_END);
-    long data_size = ftell(file);
+    data_size = ftell(file);
     fseek(file, 0, SEEK_SET);
-    char* data = (char*)malloc(data_size);
+    data = (char*)malloc(data_size);
     if (!data) return;
     if (fread(data, 1, data_size, file) != (size_t)data_size) {
         free(data);
@@ -252,7 +272,7 @@ void contents()
 
         Tvg_Paint *text = tvg_text_new();
         tvg_text_set_font(text, "Arial", 20.0f, "italic");
-        tvg_text_set_linear_gradient(text, grad);
+        tvg_text_set_gradient(text, grad);
         tvg_text_set_text(text, "ThorVG is the best");
         tvg_paint_translate(text, 70.0f, 420.0f);
         tvg_canvas_push(canvas, text);
@@ -316,10 +336,12 @@ int main(int argc, char **argv)
         tvg_canvas_clear(canvas, false);
 
         //Update the animation
-        float duration, totalFrame;
-        tvg_animation_get_duration(animation, &duration);
-        tvg_animation_get_total_frame(animation, &totalFrame);
-        tvg_animation_set_frame(animation, totalFrame * progress(elapsed, duration));
+        if (animation) {
+            float duration, totalFrame;
+            tvg_animation_get_duration(animation, &duration);
+            tvg_animation_get_total_frame(animation, &totalFrame);
+            tvg_animation_set_frame(animation, totalFrame * progress(elapsed, duration));
+        }
 
         //Draw the canvas
         tvg_canvas_update(canvas);

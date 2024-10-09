@@ -36,10 +36,7 @@ TEST_CASE("Text Creation", "[tvgText]")
     auto text = Text::gen();
     REQUIRE(text);
 
-    REQUIRE(text->identifier() == Text::identifier());
-    REQUIRE(text->identifier() != Shape::identifier());
-    REQUIRE(text->identifier() != Scene::identifier());
-    REQUIRE(text->identifier() != Picture::identifier());
+    REQUIRE(text->type() == Type::Text);
 }
 
 TEST_CASE("Load TTF Data from a file", "[tvgText]")
@@ -143,7 +140,7 @@ TEST_CASE("Text Basic", "[tvgText]")
 
 TEST_CASE("Text with composite glyphs", "[tvgText]")
 {
-    Initializer::init(tvg::CanvasEngine::Sw, 0);
+    Initializer::init(CanvasEngine::Sw, 0);
 
     auto canvas = SwCanvas::gen();
 
@@ -159,7 +156,7 @@ TEST_CASE("Text with composite glyphs", "[tvgText]")
 
     REQUIRE(canvas->push(std::move(text)) == Result::Success);
 
-    Initializer::term(tvg::CanvasEngine::Sw);
+    Initializer::term(CanvasEngine::Sw);
 }
 
 #endif

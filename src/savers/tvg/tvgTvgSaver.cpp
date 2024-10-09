@@ -167,7 +167,7 @@ bool TvgSaver::saveEncoding(const std::string& path)
     memcpy(uncompressed, &uncompressedSize, TVG_HEADER_UNCOMPRESSED_SIZE);
     uncompressed += TVG_HEADER_UNCOMPRESSED_SIZE;
 
-    //Comprssed Size
+    //Compressed Size
     memcpy(uncompressed, &compressedSize, TVG_HEADER_COMPRESSED_SIZE);
     uncompressed += TVG_HEADER_COMPRESSED_SIZE;
 
@@ -305,7 +305,7 @@ TvgBinCounter TvgSaver::writeTagProperty(TvgBinTag tag, TvgBinCounter cnt, const
 
 TvgBinCounter TvgSaver::writeTransform(const Matrix* transform, TvgBinTag tag)
 {
-    if (!mathIdentity(transform)) return writeTagProperty(tag, SIZE(Matrix), transform);
+    if (!identity(transform)) return writeTagProperty(tag, SIZE(Matrix), transform);
     return 0;
 }
 
@@ -404,13 +404,13 @@ TvgBinCounter TvgSaver::serializeFill(const Fill* fill, TvgBinTag tag, const Mat
     TvgBinCounter cnt = 0;
 
     //radial fill
-    if (fill->identifier() == TVG_CLASS_ID_RADIAL) {
+    if (fill->type() == Type::RadialGradient) {
         const RadialGradient* radial = static_cast<const RadialGradient*>(fill);
         float args[3];
         radial->radial(args, args + 1, args + 2);
         cnt += writeTagProperty(TVG_TAG_FILL_RADIAL_GRADIENT, SIZE(args), args);
         //focal
-        if (!mathZero(P(radial)->fx)|| !mathZero(P(radial)->fy) || P(radial)->fr > 0.0f) {
+        if (!tvg::zero(P(radial)->fx)|| !tvg::zero(P(radial)->fy) || P(radial)->fr > 0.0f) {
             args[0] = P(radial)->fx;
             args[1] = P(radial)->fy;
             args[2] = P(radial)->fr;
@@ -491,7 +491,7 @@ TvgBinCounter TvgSaver::serializeStroke(const Shape* shape, const Matrix* pTrans
     }
 
     //dash offset
-    if (!mathZero(offset)) {
+    if (!tvg::zero(offset)) {
         cnt += writeTagProperty(TVG_TAG_SHAPE_STROKE_DASH_OFFSET, SIZE(offset), &offset);
     }
 
@@ -526,9 +526,9 @@ TvgBinCounter TvgSaver::serializePath(const Shape* shape, const Matrix* transfor
 
     //transform?
     if (preTransform) {
-        if (!mathEqual(transform->e11, 1.0f) || !mathZero(transform->e12) || !mathZero(transform->e13) ||
-            !mathZero(transform->e21) || !mathEqual(transform->e22, 1.0f) || !mathZero(transform->e23) ||
-            !mathZero(transform->e31) || !mathZero(transform->e32) || !mathEqual(transform->e33, 1.0f)) {
+        if (!tvg::equal(transform->e11, 1.0f) || !tvg::zero(transform->e12) || !tvg::zero(transform->e13) ||
+            !tvg::zero(transform->e21) || !tvg::equal(transform->e22, 1.0f) || !tvg::zero(transform->e23) ||
+            !tvg::zero(transform->e31) || !tvg::zero(transform->e32) || !tvg::equal(transform->e33, 1.0f)) {
             auto p = const_cast<Point*>(pts);
             for (uint32_t i = 0; i < ptsCnt; ++i) {
                 *p *= *transform;
@@ -556,7 +556,7 @@ TvgBinCounter TvgSaver::serializeShape(const Shape* shape, const Matrix* pTransf
         cnt = writeTagProperty(TVG_TAG_SHAPE_FILLRULE, SIZE(TvgBinFlag), &flag);
     }
 
-    //the pre-transformation can't be applied in the case when the stroke is dashed or irregulary scaled
+    //the pre-transformation can't be applied in the case when the stroke is dashed or irregularly scaled
     bool preTransform = true;
 
     //stroke
@@ -565,7 +565,7 @@ TvgBinCounter TvgSaver::serializeShape(const Shape* shape, const Matrix* pTransf
         shape->strokeColor(color, color + 1, color + 2, color + 3);
         auto fill = shape->strokeFill();
         if (fill || color[3] > 0) {
-            if (!mathEqual(cTransform->e11, cTransform->e22) || (mathZero(cTransform->e11) && !mathEqual(cTransform->e12, cTransform->e21)) || shape->strokeDash(nullptr) > 0) preTransform = false;
+            if (!tvg::equal(cTransform->e11, cTransform->e22) || (tvg::zero(cTransform->e11) && !tvg::equal(cTransform->e12, cTransform->e21)) || shape->strokeDash(nullptr) > 0) preTransform = false;
             cnt += serializeStroke(shape, cTransform, preTransform);
         }
     }
@@ -671,10 +671,10 @@ TvgBinCounter TvgSaver::serializeChildren(Iterator* it, const Matrix* pTransform
     children.push(it->next());
 
     while (auto child = it->next()) {
-        if (child->identifier() == TVG_CLASS_ID_SHAPE) {
+        if (child->type() == Type::Shape) {
             //only dosable if the previous child is a shape.
             auto target = children.last();
-            if (target->identifier() == TVG_CLASS_ID_SHAPE) {
+            if (target->type() == Type::Shape) {
                 if (_merge((Shape*)child, (Shape*)target)) {
                     continue;
                 }
@@ -709,10 +709,15 @@ TvgBinCounter TvgSaver::serialize(const Paint* paint, const Matrix* pTransform, 
     auto transform = const_cast<Paint*>(paint)->transform();
     if (pTransform) transform = *pTransform * transform;
 
-    switch (paint->identifier()) {
-        case TVG_CLASS_ID_SHAPE: return serializeShape(static_cast<const Shape*>(paint), pTransform, &transform);
-        case TVG_CLASS_ID_SCENE: return serializeScene(static_cast<const Scene*>(paint), pTransform, &transform);
-        case TVG_CLASS_ID_PICTURE: return serializePicture(static_cast<const Picture*>(paint), pTransform, &transform);
+    switch (paint->type()) {
+        case Type::Shape: return serializeShape(static_cast<const Shape*>(paint), pTransform, &transform);
+        case Type::Scene: return serializeScene(static_cast<const Scene*>(paint), pTransform, &transform);
+        case Type::Picture: return serializePicture(static_cast<const Picture*>(paint), pTransform, &transform);
+        case Type::Text: {
+            TVGERR("TVG", "TODO: Text Serialization!");
+            return 0;
+        }
+        default: return 0;
     }
 
     return 0;
@@ -727,19 +732,24 @@ void TvgSaver::run(unsigned tid)
     Matrix transform = {1, 0, 0, 0, 1, 0, 0, 0, 1};
 
     if (paint->opacity() > 0) {
-        switch (paint->identifier()) {
-            case TVG_CLASS_ID_SHAPE: {
+        switch (paint->type()) {
+            case Type::Shape: {
                 serializeShape(static_cast<const Shape*>(paint), nullptr, &transform);
                 break;
             }
-            case TVG_CLASS_ID_SCENE: {
+            case Type::Scene: {
                 serializeScene(static_cast<const Scene*>(paint), nullptr, &transform);
                 break;
             }
-            case TVG_CLASS_ID_PICTURE: {
+            case Type::Picture: {
                 serializePicture(static_cast<const Picture*>(paint), nullptr, &transform);
                 break;
             }
+            case Type::Text: {
+                TVGERR("TVG", "TODO: Text Serialization!");
+                break;
+            }
+            default: break;
         }
     }
 

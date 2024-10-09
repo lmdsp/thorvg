@@ -23,18 +23,13 @@
 #ifndef _TVG_WG_RENDERER_H_
 #define _TVG_WG_RENDERER_H_
 
-#include "tvgWgRenderTarget.h"
+#include "tvgWgCompositor.h"
 
 class WgRenderer : public RenderMethod
 {
-private:
-    WgRenderer();
-    ~WgRenderer();
-    void initialize();
-    void release();
 public:
     RenderData prepare(const RenderShape& rshape, RenderData data, const Matrix& transform, Array<RenderData>& clips, uint8_t opacity, RenderUpdateFlag flags, bool clipper) override;
-    RenderData prepare(Surface* surface, RenderData data, const Matrix& transform, Array<RenderData>& clips, uint8_t opacity, RenderUpdateFlag flags) override;
+    RenderData prepare(RenderSurface* surface, RenderData data, const Matrix& transform, Array<RenderData>& clips, uint8_t opacity, RenderUpdateFlag flags) override;
     bool preRender() override;
     bool renderShape(RenderData data) override;
     bool renderImage(RenderData data) override;
@@ -45,41 +40,60 @@ public:
     bool viewport(const RenderRegion& vp) override;
     bool blend(BlendMethod method) override;
     ColorSpace colorSpace() override;
-    const Surface* mainSurface() override;
+    const RenderSurface* mainSurface() override;
 
     bool clear() override;
     bool sync() override;
 
-    bool target(WGPUInstance instance, WGPUSurface surface, uint32_t w, uint32_t h);
+    bool target(WGPUInstance instance, WGPUSurface surface, uint32_t w, uint32_t h, WGPUDevice device);
+    bool target(WGPUSurface surface, uint32_t w, uint32_t h);
 
-    Compositor* target(const RenderRegion& region, ColorSpace cs) override;
-    bool beginComposite(Compositor* cmp, CompositeMethod method, uint8_t opacity) override;
-    bool endComposite(Compositor* cmp) override;
+    RenderCompositor* target(const RenderRegion& region, ColorSpace cs) override;
+    bool beginComposite(RenderCompositor* cmp, CompositeMethod method, uint8_t opacity) override;
+    bool endComposite(RenderCompositor* cmp) override;
+
+    bool prepare(RenderEffect* effect) override;
+    bool effect(RenderCompositor* cmp, const RenderEffect* effect) override;
 
     static WgRenderer* gen();
     static bool init(uint32_t threads);
     static bool term();
+
+    WGPUSurface surface{}; // external handle
+
 private:
-    // render handles
+    WgRenderer();
+    ~WgRenderer();
+    void initialize();
+    void release();
+    void disposeObjects();
+    void releaseSurfaceTexture();
+
+    WGPUSurfaceTexture surfaceTexture{};
+
     WGPUCommandEncoder mCommandEncoder{};
-    WgRenderStorage mRenderTarget;
-    WgRenderStorage mRenderStorageRoot;
-    WgRenderStorage mRenderStorageScreen;
-    WgRenderStoragePool mRenderStoragePool;
-    WgBindGroupOpacityPool mOpacityPool;
-    WgBindGroupBlendMethodPool mBlendMethodPool;
-    WgBindGroupCompositeMethodPool mCompositeMethodPool;
     WgRenderDataShapePool mRenderDataShapePool;
 
     // render tree stacks
-    Array<Compositor*> mCompositorStack;
+    WgRenderStorage mStorageRoot;
+    Array<WgCompose*> mCompositorStack;
     Array<WgRenderStorage*> mRenderStorageStack;
+    WgRenderStoragePool mRenderStoragePool;
 
-    // native window handles
     WgContext mContext;
     WgPipelines mPipelines;
-    Surface mTargetSurface;
+    WgCompositor mCompositor;
+
+    RenderSurface mTargetSurface;
     BlendMethod mBlendMethod{};
+    RenderRegion mViewport{};
+
+    Array<RenderData> mDisposeRenderDatas{};
+    Key mDisposeKey{};
+
+    WGPUAdapter adapter{};
+    WGPUDevice device{};
+    bool gpuOwner{};
 };
 
 #endif /* _TVG_WG_RENDERER_H_ */

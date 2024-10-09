@@ -20,6 +20,9 @@
  * SOFTWARE.
  */
 
+#ifdef THORVG_SW_OPENMP_SUPPORT
+    #include <omp.h>
+#endif
 #include <algorithm>
 #include "tvgMath.h"
 #include "tvgSwCommon.h"
@@ -65,9 +68,7 @@ struct SwTask : Task
     }
 
     virtual void dispose() = 0;
-    virtual bool clip(SwRleData* target) = 0;
-    virtual SwRleData* rle() = 0;
-
+    virtual bool clip(SwRle* target) = 0;
     virtual ~SwTask() {}
 };
 
@@ -92,29 +93,21 @@ struct SwShapeTask : SwTask
         if (!rshape->stroke) return 0.0f;
 
         auto width = rshape->stroke->width;
-        if (mathZero(width)) return 0.0f;
+        if (tvg::zero(width)) return 0.0f;
 
         if (!rshape->stroke->fill && (MULTIPLY(rshape->stroke->color[3], opacity) == 0)) return 0.0f;
-        if (mathZero(rshape->stroke->trim.begin - rshape->stroke->trim.end)) return 0.0f;
+        if (tvg::zero(rshape->stroke->trim.begin - rshape->stroke->trim.end)) return 0.0f;
 
         return (width * sqrt(transform.e11 * transform.e11 + transform.e12 * transform.e12));
     }
 
-    bool clip(SwRleData* target) override
+    bool clip(SwRle* target) override
     {
-        if (shape.fastTrack) rleClipRect(target, &bbox);
-        else if (shape.rle) rleClipPath(target, shape.rle);
+        if (shape.fastTrack) rleClip(target, &bbox);
+        else if (shape.rle) rleClip(target, shape.rle);
         else return false;
 
         return true;
-    }
-
-    SwRleData* rle() override
-    {
-        if (!shape.rle && shape.fastTrack) {
-            shape.rle = rleRender(&shape.bbox);
-        }
-        return shape.rle;
     }
 
     void run(unsigned tid) override
@@ -201,18 +194,12 @@ struct SwShapeTask : SwTask
 struct SwImageTask : SwTask
 {
     SwImage image;
-    Surface* source;                            //Image source
+    RenderSurface* source;                //Image source
 
-    bool clip(SwRleData* target) override
+    bool clip(SwRle* target) override
     {
         TVGERR("SW_ENGINE", "Image is used as ClipPath?");
         return true;
-    }
-
-    SwRleData* rle() override
-    {
-        TVGERR("SW_ENGINE", "Image is used as Scene ClipPath?");
-        return nullptr;
     }
 
     void run(unsigned tid) override
@@ -314,10 +301,6 @@ SwRenderer::~SwRenderer()
     if (rendererCnt == 0 && initEngineCnt == 0) _termEngine();
 }
 
-// NOTE This patch gives black drawing with ThorVG 0.12.x, don't apply it anymore / check with Gael
-#define FLUX_TVG_SW_RENDERER_PATCH_1 0
-
-#if !FLUX_TVG_SW_RENDERER_PATCH_1
 
 bool SwRenderer::clear()
 {
@@ -348,38 +331,6 @@ bool SwRenderer::sync()
     return true;
 }
 
-#else
-
-bool SwRenderer::clear()
-{
-    if (surface)
-        return rasterClear(surface, 0, 0, surface->w, surface->h);
-    return false;
-}
-
-bool SwRenderer::sync()
-{
-    for (auto task = tasks.data; task < tasks.end(); ++task)
-    {
-        if ((*task)->disposed)
-        {
-            delete (*task);
-        }
-        else
-        {
-            (*task)->done();
-            (*task)->pushed = false;
-        }
-    }
-    tasks.clear();
-
-    if (!sharedMpool)
-        mpoolClear(mpool);
-
-    return true;
-}
-
-#endif // !FLUX_TVG_SW_RENDERER_PATCH_1
 
 RenderRegion SwRenderer::viewport()
 {
@@ -413,26 +364,11 @@ bool SwRenderer::target(pixel_t* data, uint32_t stride, uint32_t w, uint32_t h, 
     return rasterCompositor(surface);
 }
 
-#define FLUX_TVG_SW_RENDERER_PATCH_2 1
 
-#if !FLUX_TVG_SW_RENDERER_PATCH_2
 bool SwRenderer::preRender()
 {
     return rasterClear(surface, 0, 0, surface->w, surface->h);
 }
-#else
-bool SwRenderer::preRender()
-{
-    if (surface)
-    {
-        vport.x = vport.y = 0;
-        vport.w           = surface->w;
-        vport.h           = surface->h;
-    }
-
-    return true;
-}
-#endif // !FLUX_TVG_SW_RENDERER_PATCH_2
 
 
 void SwRenderer::clearCompositors()
@@ -503,26 +439,17 @@ bool SwRenderer::blend(BlendMethod method)
     surface->blendMethod = method;
 
     switch (method) {
-        case BlendMethod::Add:
-            surface->blender = opBlendAdd;
-            break;
-        case BlendMethod::Screen:
-            surface->blender = opBlendScreen;
+        case BlendMethod::Normal:
+            surface->blender = nullptr;
             break;
         case BlendMethod::Multiply:
             surface->blender = opBlendMultiply;
             break;
+        case BlendMethod::Screen:
+            surface->blender = opBlendScreen;
+            break;
         case BlendMethod::Overlay:
             surface->blender = opBlendOverlay;
-            break;
-        case BlendMethod::Difference:
-            surface->blender = opBlendDifference;
-            break;
-        case BlendMethod::Exclusion:
-            surface->blender = opBlendExclusion;
-            break;
-        case BlendMethod::SrcOver:
-            surface->blender = opBlendSrcOver;
             break;
         case BlendMethod::Darken:
             surface->blender = opBlendDarken;
@@ -542,7 +469,17 @@ bool SwRenderer::blend(BlendMethod method)
         case BlendMethod::SoftLight:
             surface->blender = opBlendSoftLight;
             break;
+        case BlendMethod::Difference:
+            surface->blender = opBlendDifference;
+            break;
+        case BlendMethod::Exclusion:
+            surface->blender = opBlendExclusion;
+            break;
+        case BlendMethod::Add:
+            surface->blender = opBlendAdd;
+            break;
         default:
+            TVGLOG("SW_ENGINE", "Non supported blending option = %d", (int) method);
             surface->blender = nullptr;
             break;
     }
@@ -556,7 +493,7 @@ RenderRegion SwRenderer::region(RenderData data)
 }
 
 
-bool SwRenderer::beginComposite(Compositor* cmp, CompositeMethod method, uint8_t opacity)
+bool SwRenderer::beginComposite(RenderCompositor* cmp, CompositeMethod method, uint8_t opacity)
 {
     if (!cmp) return false;
     auto p = static_cast<SwCompositor*>(cmp);
@@ -594,13 +531,50 @@ bool SwRenderer::mempool(bool shared)
 }
 
 
-const Surface* SwRenderer::mainSurface()
+const RenderSurface* SwRenderer::mainSurface()
 {
     return surface;
 }
 
 
-Compositor* SwRenderer::target(const RenderRegion& region, ColorSpace cs)
+SwSurface* SwRenderer::request(int channelSize)
+{
+    SwSurface* cmp = nullptr;
+
+    //Use cached data
+    for (auto p = compositors.begin(); p < compositors.end(); ++p) {
+        if ((*p)->compositor->valid && (*p)->compositor->image.channelSize == channelSize) {
+            cmp = *p;
+            break;
+        }
+    }
+
+    //New Composition
+    if (!cmp) {
+        //Inherits attributes from main surface
+        cmp = new SwSurface(surface);
+        cmp->compositor = new SwCompositor;
+        cmp->compositor->image.data = (pixel_t*)malloc(channelSize * surface->stride * surface->h);
+        cmp->compositor->image.w = surface->w;
+        cmp->compositor->image.h = surface->h;
+        cmp->compositor->image.stride = surface->stride;
+        cmp->compositor->image.direct = true;
+        cmp->compositor->valid = true;
+        cmp->channelSize = cmp->compositor->image.channelSize = channelSize;
+        cmp->w = cmp->compositor->image.w;
+        cmp->h = cmp->compositor->image.h;
+
+        compositors.push(cmp);
+    }
+
+    //Sync. This may have been modified by post-processing.
+    cmp->data = cmp->compositor->image.data;
+
+    return cmp;
+}
+
+
+RenderCompositor* SwRenderer::target(const RenderRegion& region, ColorSpace cs)
 {
     auto x = region.x;
     auto y = region.y;
@@ -612,32 +586,11 @@ Compositor* SwRenderer::target(const RenderRegion& region, ColorSpace cs)
     //Out of boundary
     if (x >= sw || y >= sh || x + w < 0 || y + h < 0) return nullptr;
 
-    SwSurface* cmp = nullptr;
-
-    auto reqChannelSize = CHANNEL_SIZE(cs);
-
-    //Use cached data
-    for (auto p = compositors.begin(); p < compositors.end(); ++p) {
-        if ((*p)->compositor->valid && (*p)->compositor->image.channelSize == reqChannelSize) {
-            cmp = *p;
-            break;
-        }
-    }
-
-    //New Composition
-    if (!cmp) {
-        //Inherits attributes from main surface
-        cmp = new SwSurface(surface);
-        cmp->compositor = new SwCompositor;
-
-        //TODO: We can optimize compositor surface size from (surface->stride x surface->h) to Parameter(w x h)
-        cmp->compositor->image.data = (pixel_t*)malloc(reqChannelSize * surface->stride * surface->h);
-        cmp->channelSize = cmp->compositor->image.channelSize = reqChannelSize;
-
-        compositors.push(cmp);
-    }
+    auto cmp = request(CHANNEL_SIZE(cs));
 
     //Boundary Check
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
     if (x + w > sw) w = (sw - x);
     if (y + h > sh) h = (sh - y);
 
@@ -648,14 +601,6 @@ Compositor* SwRenderer::target(const RenderRegion& region, ColorSpace cs)
     cmp->compositor->bbox.min.y = y;
     cmp->compositor->bbox.max.x = x + w;
     cmp->compositor->bbox.max.y = y + h;
-    cmp->compositor->image.stride = surface->stride;
-    cmp->compositor->image.w = surface->w;
-    cmp->compositor->image.h = surface->h;
-    cmp->compositor->image.direct = true;
-
-    cmp->data = cmp->compositor->image.data;
-    cmp->w = cmp->compositor->image.w;
-    cmp->h = cmp->compositor->image.h;
 
     /* TODO: Currently, only blending might work.
        Blending and composition must be handled together. */
@@ -669,7 +614,7 @@ Compositor* SwRenderer::target(const RenderRegion& region, ColorSpace cs)
 }
 
 
-bool SwRenderer::endComposite(Compositor* cmp)
+bool SwRenderer::endComposite(RenderCompositor* cmp)
 {
     if (!cmp) return false;
 
@@ -687,6 +632,27 @@ bool SwRenderer::endComposite(Compositor* cmp)
     }
 
     return true;
+}
+
+
+bool SwRenderer::prepare(RenderEffect* effect)
+{
+    switch (effect->type) {
+        case SceneEffect::GaussianBlur: return effectGaussianPrepare(static_cast<RenderEffectGaussian*>(effect));
+        default: return false;
+    }
+}
+
+
+bool SwRenderer::effect(RenderCompositor* cmp, const RenderEffect* effect)
+{
+    auto p = static_cast<SwCompositor*>(cmp);
+    auto& buffer = request(surface->channelSize)->compositor->image;
+
+    switch (effect->type) {
+        case SceneEffect::GaussianBlur: return effectGaussianBlur(p->image, buffer, p->bbox, static_cast<const RenderEffectGaussian*>(effect));
+        default: return false;
+    }
 }
 
 
@@ -732,10 +698,10 @@ void* SwRenderer::prepareCommon(SwTask* task, const Matrix& transform, const Arr
     task->surface = surface;
     task->mpool = mpool;
     task->flags = flags;
-    task->bbox.min.x = mathMax(static_cast<SwCoord>(0), static_cast<SwCoord>(vport.x));
-    task->bbox.min.y = mathMax(static_cast<SwCoord>(0), static_cast<SwCoord>(vport.y));
-    task->bbox.max.x = mathMin(static_cast<SwCoord>(surface->w), static_cast<SwCoord>(vport.x + vport.w));
-    task->bbox.max.y = mathMin(static_cast<SwCoord>(surface->h), static_cast<SwCoord>(vport.y + vport.h));
+    task->bbox.min.x = std::max(static_cast<SwCoord>(0), static_cast<SwCoord>(vport.x));
+    task->bbox.min.y = std::max(static_cast<SwCoord>(0), static_cast<SwCoord>(vport.y));
+    task->bbox.max.x = std::min(static_cast<SwCoord>(surface->w), static_cast<SwCoord>(vport.x + vport.w));
+    task->bbox.max.y = std::min(static_cast<SwCoord>(surface->h), static_cast<SwCoord>(vport.y + vport.h));
 
     if (!task->pushed) {
         task->pushed = true;
@@ -748,7 +714,7 @@ void* SwRenderer::prepareCommon(SwTask* task, const Matrix& transform, const Arr
 }
 
 
-RenderData SwRenderer::prepare(Surface* surface, RenderData data, const Matrix& transform, Array<RenderData>& clips, uint8_t opacity, RenderUpdateFlag flags)
+RenderData SwRenderer::prepare(RenderSurface* surface, RenderData data, const Matrix& transform, Array<RenderData>& clips, uint8_t opacity, RenderUpdateFlag flags)
 {
     //prepare task
     auto task = static_cast<SwImageTask*>(data);
@@ -799,6 +765,10 @@ bool SwRenderer::init(uint32_t threads)
 
 int32_t SwRenderer::init()
 {
+#ifdef THORVG_SW_OPENMP_SUPPORT
+    omp_set_num_threads(TaskScheduler::threads());
+#endif
+
     return initEngineCnt;
 }
 

@@ -1,4 +1,4 @@
-if (lib_type == 'static')
+if lib_type == 'static'
     compiler_flags += ['-DTVG_STATIC']
 endif
 
@@ -8,7 +8,7 @@ endif
 
 examples_dep = [dependency('sdl2')]
 
-if (get_option('engines').contains('wg_beta'))
+if get_option('engines').contains('wg_beta')
     examples_dep += dependency('wgpu_native')
     if host_machine.system() == 'darwin'
         add_languages('objcpp')
@@ -21,9 +21,8 @@ source_file = [
     'Accessor.cpp',
     'AnimateMasking.cpp',
     'Animation.cpp',
-    'Arc.cpp',
     'Blending.cpp',
-    'ClipPath.cpp',
+    'Clipping.cpp',
     'CustomTransform.cpp',
     'DataLoad.cpp',
     'DirectUpdate.cpp',
@@ -34,8 +33,10 @@ source_file = [
     'GradientMasking.cpp',
     'GradientStroke.cpp',
     'GradientTransform.cpp',
+    'ImageRotation.cpp',
     'ImageScaleDown.cpp',
     'ImageScaleUp.cpp',
+    'Interaction.cpp',
     'InvLumaMasking.cpp',
     'InvMasking.cpp',
     'LinearGradient.cpp',
@@ -43,9 +44,9 @@ source_file = [
     'LumaMasking.cpp',
     'Masking.cpp',
     'MaskingMethods.cpp',
+    'MultiCanvas.cpp',
     'MultiShapes.cpp',
     'Opacity.cpp',
-    'PathCopy.cpp',
     'Path.cpp',
     'Performance.cpp',
     'PictureJpg.cpp',
@@ -60,6 +61,7 @@ source_file = [
     'SceneBlending.cpp',
     'SceneTransform.cpp',
     'Shape.cpp',
+    'SceneEffect.cpp',
     'Stroke.cpp',
     'StrokeLine.cpp',
     'StrokeMiterlimit.cpp',
@@ -78,6 +80,9 @@ if lottie_loader
   source_file += 'LottieExtension.cpp'
 endif
 
+if lottie_expressions
+  source_file += 'LottieExpressions.cpp'
+endif
 
 foreach current_file : source_file
     name = current_file.split('.')[0]
@@ -89,7 +94,7 @@ foreach current_file : source_file
 endforeach
 
 
-if get_option('bindings').contains('capi') == true
+if get_option('bindings').contains('capi')
     capi_source_file = [
         'Capi.cpp'
     ]

@@ -33,14 +33,12 @@ TEST_CASE("Filling Creation", "[tvgFill]")
     auto linear = LinearGradient::gen();
     REQUIRE(linear);
 
-    REQUIRE(linear->identifier() == LinearGradient::identifier());
-    REQUIRE(linear->identifier() != RadialGradient::identifier());
-
+    REQUIRE(linear->type() == Type::LinearGradient);
+    
     auto radial = RadialGradient::gen();
     REQUIRE(radial);
 
-    REQUIRE(radial->identifier() == RadialGradient::identifier());
-    REQUIRE(radial->identifier() != LinearGradient::identifier());
+    REQUIRE(radial->type() == Type::RadialGradient);
 }
 
 TEST_CASE("Common Filling", "[tvgFill]")
@@ -173,7 +171,7 @@ TEST_CASE("Radial Filling", "[tvgFill]")
     REQUIRE(radius == 0.0f);
 }
 
-TEST_CASE("Linear Filling Dupliction", "[tvgFill]")
+TEST_CASE("Linear Filling Duplication", "[tvgFill]")
 {
     auto fill = LinearGradient::gen();
     REQUIRE(fill);
@@ -228,7 +226,7 @@ TEST_CASE("Linear Filling Dupliction", "[tvgFill]")
     REQUIRE(mDup.e33 == Approx(m.e33).margin(0.000001));
 }
 
-TEST_CASE("Radial Filling Dupliction", "[tvgFill]")
+TEST_CASE("Radial Filling Duplication", "[tvgFill]")
 {
     auto fill = RadialGradient::gen();
     REQUIRE(fill);

@@ -1,6 +1,7 @@
 source_file = [
     'tvgWgBindGroups.h',
     'tvgWgCommon.h',
+    'tvgWgCompositor.h',
     'tvgWgGeometry.h',
     'tvgWgPipelines.h',
     'tvgWgRenderData.h',
@@ -10,7 +11,7 @@ source_file = [
     'tvgWgShaderTypes.h',
     'tvgWgBindGroups.cpp',
     'tvgWgCommon.cpp',
-    'tvgWgGeometry.cpp',
+    'tvgWgCompositor.cpp',
     'tvgWgPipelines.cpp',
     'tvgWgRenderData.cpp',
     'tvgWgRenderer.cpp',
@@ -19,7 +20,10 @@ source_file = [
     'tvgWgShaderTypes.cpp'
 ]
 
-wgpu_dep = dependency('wgpu_native')
+wgpu_dep = []
+if not get_option('bindings').contains('wasm_beta')
+    wgpu_dep = dependency('wgpu_native')
+endif
 
 engine_dep += [declare_dependency(
     dependencies        : wgpu_dep,

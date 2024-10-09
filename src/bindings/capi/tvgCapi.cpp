@@ -251,19 +251,24 @@ TVG_API Tvg_Result tvg_paint_set_blend_method(Tvg_Paint* paint, Tvg_Blend_Method
 }
 
 
-TVG_API Tvg_Result tvg_paint_get_blend_method(const Tvg_Paint* paint, Tvg_Blend_Method* method)
+TVG_API Tvg_Result tvg_paint_get_type(const Tvg_Paint* paint, Tvg_Type* type)
 {
-    if (!paint || !method) return TVG_RESULT_INVALID_ARGUMENT;
-    *method = static_cast<Tvg_Blend_Method>(reinterpret_cast<const Paint*>(paint)->blend());
+    if (!paint || !type) return TVG_RESULT_INVALID_ARGUMENT;
+    *type = static_cast<Tvg_Type>(reinterpret_cast<const Paint*>(paint)->type());
     return TVG_RESULT_SUCCESS;
 }
 
 
-TVG_API Tvg_Result tvg_paint_get_identifier(const Tvg_Paint* paint, Tvg_Identifier* identifier)
+TVG_API Tvg_Result tvg_paint_set_clip(Tvg_Paint* paint, Tvg_Paint* clipper)
 {
-    if (!paint || !identifier) return TVG_RESULT_INVALID_ARGUMENT;
-    *identifier = static_cast<Tvg_Identifier>(reinterpret_cast<const Paint*>(paint)->identifier());
-    return TVG_RESULT_SUCCESS;
+   if (!paint) return TVG_RESULT_INVALID_ARGUMENT;
+   return (Tvg_Result) reinterpret_cast<Paint*>(paint)->clip(unique_ptr<Paint>((Paint*)(clipper)));
+}
+
+
+TVG_DEPRECATED TVG_API Tvg_Result tvg_paint_get_identifier(const Tvg_Paint* paint, Tvg_Identifier* identifier)
+{
+    return tvg_paint_get_type(paint, (Tvg_Type*) identifier);
 }
 
 /************************************************************************/
@@ -318,7 +323,7 @@ TVG_API Tvg_Result tvg_shape_append_rect(Tvg_Paint* paint, float x, float y, flo
 }
 
 
-TVG_API Tvg_Result tvg_shape_append_arc(Tvg_Paint* paint, float cx, float cy, float radius, float startAngle, float sweep, uint8_t pie)
+TVG_DEPRECATED TVG_API Tvg_Result tvg_shape_append_arc(Tvg_Paint* paint, float cx, float cy, float radius, float startAngle, float sweep, uint8_t pie)
 {
     if (!paint) return TVG_RESULT_INVALID_ARGUMENT;
     return (Tvg_Result) reinterpret_cast<Shape*>(paint)->appendArc(cx, cy, radius, startAngle, sweep, pie);
@@ -470,14 +475,6 @@ TVG_API Tvg_Result tvg_shape_set_stroke_trim(Tvg_Paint* paint, float begin, floa
 {
     if (!paint) return TVG_RESULT_INVALID_ARGUMENT;
     return (Tvg_Result) reinterpret_cast<Shape*>(paint)->strokeTrim(begin, end, simultaneous);
-}
-
-
-TVG_API Tvg_Result tvg_shape_get_stroke_trim(Tvg_Paint* paint, float* begin, float* end, bool* simultaneous)
-{
-    if (!paint) return TVG_RESULT_INVALID_ARGUMENT;
-    if (simultaneous) *simultaneous = reinterpret_cast<Shape*>(paint)->strokeTrim(begin, end);
-    return TVG_RESULT_SUCCESS;
 }
 
 
@@ -694,11 +691,17 @@ TVG_API Tvg_Result tvg_gradient_get_transform(const Tvg_Gradient* grad, Tvg_Matr
 }
 
 
-TVG_API Tvg_Result tvg_gradient_get_identifier(const Tvg_Gradient* grad, Tvg_Identifier* identifier)
+TVG_API Tvg_Result tvg_gradient_get_type(const Tvg_Gradient* grad, Tvg_Type* type)
 {
-    if (!grad || !identifier) return TVG_RESULT_INVALID_ARGUMENT;
-    *identifier = static_cast<Tvg_Identifier>(reinterpret_cast<const Fill*>(grad)->identifier());
+    if (!grad || !type) return TVG_RESULT_INVALID_ARGUMENT;
+    *type = static_cast<Tvg_Type>(reinterpret_cast<const Fill*>(grad)->type());
     return TVG_RESULT_SUCCESS;
+}
+
+
+TVG_DEPRECATED TVG_API Tvg_Result tvg_gradient_get_identifier(const Tvg_Gradient* grad, Tvg_Identifier* identifier)
+{
+    return tvg_gradient_get_type(grad, (Tvg_Type*) identifier);
 }
 
 /************************************************************************/
@@ -762,17 +765,10 @@ TVG_API Tvg_Result tvg_text_set_fill_color(Tvg_Paint* paint, uint8_t r, uint8_t 
 }
 
 
-TVG_API Tvg_Result tvg_text_set_linear_gradient(Tvg_Paint* paint, Tvg_Gradient* gradient)
+TVG_API Tvg_Result tvg_text_set_gradient(Tvg_Paint* paint, Tvg_Gradient* gradient)
 {
     if (!paint) return TVG_RESULT_INVALID_ARGUMENT;
-    return (Tvg_Result) reinterpret_cast<Text*>(paint)->fill(unique_ptr<LinearGradient>((LinearGradient*)(gradient)));
-}
-
-
-TVG_API Tvg_Result tvg_text_set_radial_gradient(Tvg_Paint* paint, Tvg_Gradient* gradient)
-{
-    if (!paint) return TVG_RESULT_INVALID_ARGUMENT;
-    return (Tvg_Result) reinterpret_cast<Text*>(paint)->fill(unique_ptr<RadialGradient>((RadialGradient*)(gradient)));
+    return (Tvg_Result) reinterpret_cast<Text*>(paint)->fill(unique_ptr<Fill>((Fill*)(gradient)));
 }
 
 

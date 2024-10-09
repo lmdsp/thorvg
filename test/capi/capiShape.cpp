@@ -29,23 +29,21 @@ TEST_CASE("Multiple shapes", "[capiShapes]")
     Tvg_Paint* paint = tvg_shape_new();
     REQUIRE(paint);
 
-    Tvg_Identifier id = TVG_IDENTIFIER_UNDEF;
-    REQUIRE(tvg_paint_get_identifier(paint, &id) == TVG_RESULT_SUCCESS);
-    REQUIRE(id == TVG_IDENTIFIER_SHAPE);
-    REQUIRE(id != TVG_IDENTIFIER_SCENE);
-    REQUIRE(id != TVG_IDENTIFIER_PICTURE);
+    Tvg_Type type = TVG_TYPE_UNDEF;
+    REQUIRE(tvg_paint_get_type(paint, &type) == TVG_RESULT_SUCCESS);
+    REQUIRE(type == TVG_TYPE_SHAPE);
+    REQUIRE(type != TVG_TYPE_SCENE);
+    REQUIRE(type != TVG_TYPE_PICTURE);
 
     REQUIRE(tvg_shape_append_rect(paint, 0, 0, 100, 100, 0, 0) == TVG_RESULT_SUCCESS);
     REQUIRE(tvg_shape_append_rect(paint, 0, 0, 100, 100, 50, 50) == TVG_RESULT_SUCCESS);
     REQUIRE(tvg_shape_append_rect(paint, 0, 0, 100, 100, 100, 100) == TVG_RESULT_SUCCESS);
     REQUIRE(tvg_shape_append_circle(paint, 100, 100, 50, 50) == TVG_RESULT_SUCCESS);
     REQUIRE(tvg_shape_append_circle(paint, 100, 100, 0, 0) == TVG_RESULT_SUCCESS);
-    REQUIRE(tvg_shape_append_arc(paint, 100, 100, 50, 90, 90, 0) == TVG_RESULT_SUCCESS);
 
     //Invalid paint
     REQUIRE(tvg_shape_append_rect(NULL, 0, 0, 0, 0, 0, 0) == TVG_RESULT_INVALID_ARGUMENT);
     REQUIRE(tvg_shape_append_circle(NULL, 0, 0, 0, 0) == TVG_RESULT_INVALID_ARGUMENT);
-    REQUIRE(tvg_shape_append_arc(NULL, 0, 0, 0, 0, 0, 0) == TVG_RESULT_INVALID_ARGUMENT);
 
     REQUIRE(tvg_paint_del(paint) == TVG_RESULT_SUCCESS);
 }
@@ -254,19 +252,8 @@ TEST_CASE("Stroke trim", "[capiStrokeTrim]")
     Tvg_Paint* paint = tvg_shape_new();
     REQUIRE(paint);
 
-    float begin, end;
-    bool simultaneous;
-
-    REQUIRE(tvg_shape_get_stroke_trim(NULL, &begin, &end, &simultaneous) == TVG_RESULT_INVALID_ARGUMENT);
-    REQUIRE(tvg_shape_get_stroke_trim(paint, &begin, &end, &simultaneous) == TVG_RESULT_SUCCESS);
-
     REQUIRE(tvg_shape_set_stroke_trim(NULL, 0.33f, 0.66f, false) == TVG_RESULT_INVALID_ARGUMENT);
     REQUIRE(tvg_shape_set_stroke_trim(paint, 0.33f, 0.66f, false) == TVG_RESULT_SUCCESS);
-    REQUIRE(tvg_shape_get_stroke_trim(paint, &begin, &end, &simultaneous) == TVG_RESULT_SUCCESS);
-    REQUIRE(begin == Approx(0.33).margin(0.000001));
-    REQUIRE(end == Approx(0.66).margin(0.000001));
-    REQUIRE(simultaneous == false);
-
     REQUIRE(tvg_paint_del(paint) == TVG_RESULT_SUCCESS);
 }
 

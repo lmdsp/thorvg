@@ -25,189 +25,82 @@
 
 #include "tvgWgBindGroups.h"
 
-//*****************************************************************************
-// render pipelines
-//*****************************************************************************
+enum class WgPipelineBlendType { Normal, Custom };
 
-struct WgPipelineFillShapeWinding: public WgRenderPipeline
-{
-    void initialize(WGPUDevice device) override;
-    void use(WGPURenderPassEncoder encoder, WgBindGroupCanvas& groupCanvas, WgBindGroupPaint& groupPaint)
-    {
-        set(encoder);
-        groupCanvas.set(encoder, 0);
-        groupPaint.set(encoder, 1);
-    }
-};
-
-struct WgPipelineFillShapeEvenOdd: public WgRenderPipeline
-{
-    void initialize(WGPUDevice device) override;
-    void use(WGPURenderPassEncoder encoder, WgBindGroupCanvas& groupCanvas, WgBindGroupPaint& groupPaint)
-    {
-        set(encoder);
-        groupCanvas.set(encoder, 0);
-        groupPaint.set(encoder, 1);
-    }
-};
-
-struct WgPipelineFillStroke: public WgRenderPipeline
-{
-    void initialize(WGPUDevice device) override;
-    void use(WGPURenderPassEncoder encoder, WgBindGroupCanvas& groupCanvas, WgBindGroupPaint& groupPaint)
-    {
-        set(encoder);
-        groupCanvas.set(encoder, 0);
-        groupPaint.set(encoder, 1);
-    }
-};
-
-struct WgPipelineSolid: public WgRenderPipeline
-{
-    void initialize(WGPUDevice device) override {}
-    void initialize(WGPUDevice device, WgPipelineBlendType blendType);
-    void use(WGPURenderPassEncoder encoder, WgBindGroupCanvas& groupCanvas,WgBindGroupPaint& groupPaint, WgBindGroupSolidColor& groupSolid)
-    {
-        set(encoder);
-        groupCanvas.set(encoder, 0);
-        groupPaint.set(encoder, 1);
-        groupSolid.set(encoder, 2);
-    }
-};
-
-struct WgPipelineLinear: public WgRenderPipeline
-{
-    void initialize(WGPUDevice device) override {}
-    void initialize(WGPUDevice device, WgPipelineBlendType blendType);
-    void use(WGPURenderPassEncoder encoder, WgBindGroupCanvas& groupCanvas, WgBindGroupPaint& groupPaint, WgBindGroupLinearGradient& groupLinear)
-    {
-        set(encoder);
-        groupCanvas.set(encoder, 0);
-        groupPaint.set(encoder, 1);
-        groupLinear.set(encoder, 2);
-    }
-};
-
-struct WgPipelineRadial: public WgRenderPipeline
-{
-    void initialize(WGPUDevice device) override {}
-    void initialize(WGPUDevice device, WgPipelineBlendType blendType);
-    void use(WGPURenderPassEncoder encoder, WgBindGroupCanvas& groupCanvas, WgBindGroupPaint& groupPaint, WgBindGroupRadialGradient& groupRadial)
-    {
-        set(encoder);
-        groupCanvas.set(encoder, 0);
-        groupPaint.set(encoder, 1);
-        groupRadial.set(encoder, 2);
-    }
-};
-
-struct WgPipelineImage: public WgRenderPipeline
-{
-    void initialize(WGPUDevice device) override {}
-    void initialize(WGPUDevice device, WgPipelineBlendType blendType);
-    void use(WGPURenderPassEncoder encoder, WgBindGroupCanvas& groupCanvas, WgBindGroupPaint& groupPaint, WgBindGroupPicture& groupPicture)
-    {
-        set(encoder);
-        groupCanvas.set(encoder, 0);
-        groupPaint.set(encoder, 1);
-        groupPicture.set(encoder, 2);
-    }
-};
-
-//*****************************************************************************
-// compute pipelines
-//*****************************************************************************
-
-struct WgPipelineClear: public WgComputePipeline
-{
-    void initialize(WGPUDevice device) override;
-    void use(WGPUComputePassEncoder encoder, WgBindGroupTextureStorageRgba& groupTexDst)
-    {
-        set(encoder);
-        groupTexDst.set(encoder, 0);
-    }
-};
-
-
-struct WgPipelineBlend: public WgComputePipeline
-{
-    void initialize(WGPUDevice device) override;
-    void use(WGPUComputePassEncoder encoder, WgBindGroupTextureStorageRgba& groupTexSrc, WgBindGroupTextureStorageRgba& groupTexDst, WgBindGroupBlendMethod& blendMethod)
-    {
-        set(encoder);
-        groupTexSrc.set(encoder, 0);
-        groupTexDst.set(encoder, 1);
-        blendMethod.set(encoder, 2);
-    }
-};
-
-
-struct WgPipelineCompose: public WgComputePipeline
-{
-    void initialize(WGPUDevice device) override;
-    void use(WGPUComputePassEncoder encoder, WgBindGroupTextureStorageRgba& groupTexSrc, WgBindGroupTextureStorageRgba& groupTexMsk, WgBindGroupCompositeMethod& groupComposeMethod, WgBindGroupOpacity& groupOpacity)
-    {
-        set(encoder);
-        groupTexSrc.set(encoder, 0);
-        groupTexMsk.set(encoder, 1);
-        groupComposeMethod.set(encoder, 2);
-        groupOpacity.set(encoder, 3);
-    }
-};
-
-
-struct WgPipelineComposeBlend: public WgComputePipeline
-{
-    void initialize(WGPUDevice device) override;
-    void use(WGPUComputePassEncoder encoder, WgBindGroupTexComposeBlend& groupTexs, WgBindGroupCompositeMethod& groupComposeMethod, WgBindGroupBlendMethod& groupBlendMethod, WgBindGroupOpacity& groupOpacity)
-    {
-        set(encoder);
-        groupTexs.set(encoder, 0);
-        groupComposeMethod.set(encoder, 1);
-        groupBlendMethod.set(encoder, 2);
-        groupOpacity.set(encoder, 3);
-    }
-};
-
-
-struct WgPipelineAntiAliasing: public WgComputePipeline
-{
-    void initialize(WGPUDevice device) override;
-    void use(WGPUComputePassEncoder encoder, WgBindGroupTextureStorageRgba& groupTexSrc, WgBindGroupTextureStorageBgra& groupTexDst)
-    {
-        set(encoder);
-        groupTexSrc.set(encoder, 0);
-        groupTexDst.set(encoder, 1);
-    }
-};
-
-//*****************************************************************************
-// pipelines
-//*****************************************************************************
-
-struct WgPipelines
-{
-    // render pipelines
-    WgPipelineFillShapeWinding fillShapeWinding;
-    WgPipelineFillShapeEvenOdd fillShapeEvenOdd;
-    WgPipelineFillStroke fillStroke;
-    // fill pipelines
-    WgPipelineSolid solid[6];
-    WgPipelineLinear linear[6];
-    WgPipelineRadial radial[6];
-    WgPipelineImage image[6];
-    // compute pipelines
-    WgPipelineClear computeClear;
-    WgPipelineBlend computeBlend;
-    WgPipelineCompose computeCompose;
-    WgPipelineComposeBlend computeComposeBlend;
-    WgPipelineAntiAliasing computeAntiAliasing;
-
+class WgPipelines {
+private:
+    // graphics pipeline shaders
+    WGPUShaderModule shaderStencil{};
+    WGPUShaderModule shaderSolid{};
+    WGPUShaderModule shaderRadial{};
+    WGPUShaderModule shaderLinear{};
+    WGPUShaderModule shaderImage{};
+    WGPUShaderModule shaderSceneComp{};
+    WGPUShaderModule shaderSceneBlend{};
+    WGPUShaderModule shaderBlit{};
+    // compute pipeline shaders
+    WGPUShaderModule shaderMergeMasks;
+    WGPUShaderModule shaderBlendSolid;
+    WGPUShaderModule shaderBlendGradient;
+    WGPUShaderModule shaderBlendImage;
+private:
+    // graphics pipeline layouts
+    WGPUPipelineLayout layoutStencil{};
+    WGPUPipelineLayout layoutSolid{};
+    WGPUPipelineLayout layoutGradient{};
+    WGPUPipelineLayout layoutImage{};
+    WGPUPipelineLayout layoutSceneComp{};
+    WGPUPipelineLayout layoutSceneBlend{};
+    WGPUPipelineLayout layoutBlit{};
+    // compute pipeline layouts
+    WGPUPipelineLayout layoutMergeMasks{};
+    WGPUPipelineLayout layoutBlend{};
+public:
+    // graphics pipeline
+    WgBindGroupLayouts layouts;
+    WGPURenderPipeline winding{};
+    WGPURenderPipeline evenodd{};
+    WGPURenderPipeline direct{};
+    WGPURenderPipeline solid[2]{};
+    WGPURenderPipeline radial[2]{};
+    WGPURenderPipeline linear[2]{};
+    WGPURenderPipeline image[2]{};
+    WGPURenderPipeline sceneClip;
+    WGPURenderPipeline sceneComp[12]; // TODO: update to 11 after removing CompositeMethod::ClipPath enum value
+    WGPURenderPipeline sceneBlend;
+    WGPURenderPipeline blit{};
+    WGPURenderPipeline clipPath{};
+    // compute pipeline
+    WGPUComputePipeline mergeMasks;
+    WGPUComputePipeline blendSolid[18];
+    WGPUComputePipeline blendGradient[18];
+    WGPUComputePipeline blendImage[18];
+private:
+    void releaseGraphicHandles(WgContext& context);
+    void releaseComputeHandles(WgContext& context);
+private:
+    WGPUShaderModule createShaderModule(WGPUDevice device, const char* label, const char* code);
+    WGPUPipelineLayout createPipelineLayout(WGPUDevice device, const WGPUBindGroupLayout* bindGroupLayouts, const uint32_t bindGroupLayoutsCount);
+    WGPURenderPipeline createRenderPipeline(
+        WGPUDevice device, const char* pipelineLabel,
+        const WGPUShaderModule shaderModule, const char* vsEntryPoint, const char* fsEntryPoint,
+        const WGPUPipelineLayout pipelineLayout,
+        const WGPUVertexBufferLayout *vertexBufferLayouts, const uint32_t vertexBufferLayoutsCount,
+        const WGPUColorWriteMaskFlags writeMask, const WGPUTextureFormat colorTargetFormat,
+        const WGPUCompareFunction stencilFunctionFrnt, const WGPUStencilOperation stencilOperationFrnt,
+        const WGPUCompareFunction stencilFunctionBack, const WGPUStencilOperation stencilOperationBack,
+        const WGPUPrimitiveState primitiveState, const WGPUMultisampleState multisampleState, const WGPUBlendState blendState);
+    WGPUComputePipeline createComputePipeline(
+        WGPUDevice device, const char* pipelineLabel,
+        const WGPUShaderModule shaderModule, const char* entryPoint,
+        const WGPUPipelineLayout pipelineLayout);
+    void releaseComputePipeline(WGPUComputePipeline& computePipeline);
+    void releaseRenderPipeline(WGPURenderPipeline& renderPipeline);
+    void releasePipelineLayout(WGPUPipelineLayout& pipelineLayout);
+    void releaseShaderModule(WGPUShaderModule& shaderModule);
+public:
     void initialize(WgContext& context);
-    void release();
-
-    static bool isBlendMethodSupportsHW(BlendMethod blendMethod);
-    static WgPipelineBlendType blendMethodToBlendType(BlendMethod blendMethod);
+    void release(WgContext& context);
 };
 
 #endif // _TVG_WG_PIPELINES_H_
