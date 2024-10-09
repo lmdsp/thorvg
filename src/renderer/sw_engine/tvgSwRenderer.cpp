@@ -320,11 +320,11 @@ bool SwRenderer::clear()
 
     if (!sharedMpool) mpoolClear(mpool);
 
-    if (surface) {
+    /*if (surface) {
         vport.x = vport.y = 0;
         vport.w = surface->w;
         vport.h = surface->h;
-    }
+    }*/
 
     return true;
 }
