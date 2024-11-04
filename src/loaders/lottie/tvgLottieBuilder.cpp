@@ -1100,7 +1100,7 @@ void LottieBuilder::updateText(LottieLayer* layer, float frameNo)
                         if (spacing > lineSpacing) lineSpacing = spacing;
                     }
                     Matrix matrix;
-                    identity(&matrix);
+                    tvg::identity(&matrix);
                     translate(&matrix, translation.x / scale + cursor.x, translation.y / scale + cursor.y);
                     tvg::scale(&matrix, scaling.x, scaling.y);
                     rotate(&matrix, rotation);
