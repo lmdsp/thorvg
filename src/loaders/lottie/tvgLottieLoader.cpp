@@ -44,8 +44,21 @@ void LottieLoader::run(unsigned tid)
             comp = parser.comp;
         }
         builder->build(comp);
+
+        release();
     }
     rebuild = false;
+}
+
+
+void LottieLoader::release()
+{
+    if (copy) {
+        free((char*)content);
+        content = nullptr;
+    }
+    free(dirName);
+    dirName = nullptr;
 }
 
 
@@ -63,8 +76,7 @@ LottieLoader::~LottieLoader()
 {
     done();
 
-    if (copy) free((char*)content);
-    free(dirName);
+    release();
 
     //TODO: correct position?
     delete(comp);
@@ -76,6 +88,7 @@ bool LottieLoader::header()
 {
     //A single thread doesn't need to perform intensive tasks.
     if (TaskScheduler::threads() == 0) {
+        LoadModule::read();
         run(0);
         if (comp) {
             w = static_cast<float>(comp->w);
@@ -87,7 +100,6 @@ bool LottieLoader::header()
         } else {
             return false;
         }
-        LoadModule::read();
     }
 
     //Quickly validate the given Lottie file without parsing in order to get the animation info.
@@ -192,6 +204,8 @@ bool LottieLoader::open(const char* data, uint32_t size, bool copy)
         const_cast<char*>(content)[size] = '\0';
     } else content = data;
 
+    this->dirName = strdup(".");
+
     this->size = size;
     this->copy = copy;
 
@@ -259,10 +273,10 @@ bool LottieLoader::resize(Paint* paint, float w, float h)
 
 bool LottieLoader::read()
 {
-    if (!content || size == 0) return false;
-
     //the loading has been already completed
     if (!LoadModule::read()) return true;
+
+    if (!content || size == 0) return false;
 
     TaskScheduler::request(this);
 
@@ -293,6 +307,7 @@ bool LottieLoader::override(const char* slot)
 
         //parsing slot json
         LottieParser parser(temp, dirName);
+        parser.comp = comp;
 
         auto idx = 0;
         while (auto sid = parser.sid(idx == 0)) {

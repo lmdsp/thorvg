@@ -254,7 +254,7 @@ void LottieParser::getValue(ColorStop& color)
 {
     if (peekType() == kArrayType) enterArray();
 
-    if (!color.input) color.input = new Array<float>(static_cast<LottieGradient*>(context.parent)->colorStops.count);
+    if (!color.input) color.input = new Array<float>(static_cast<LottieGradient*>(context.parent)->colorStops.count * 6);
     else color.input->clear();
 
     while (nextArrayValue()) color.input->push(getFloat());
@@ -1233,6 +1233,7 @@ LottieMask* LottieParser::parseMask()
         }
         else if (valid && KEY_AS("pt")) getPathSet(mask->pathset);
         else if (valid && KEY_AS("o")) parseProperty<LottieProperty::Type::Opacity>(mask->opacity);
+        else if (valid && KEY_AS("x")) parseProperty<LottieProperty::Type::Float>(mask->expand);
         else skip(key);
     }
 
@@ -1443,7 +1444,7 @@ bool LottieParser::apply(LottieSlot* slot)
         case LottieProperty::Type::Color: {
             obj = new LottieSolid;
             context.parent = obj;
-             parseSlotProperty<LottieProperty::Type::Color>(static_cast<LottieSolid*>(obj)->color);
+            parseSlotProperty<LottieProperty::Type::Color>(static_cast<LottieSolid*>(obj)->color);
             break;
         }
         case LottieProperty::Type::TextDoc: {

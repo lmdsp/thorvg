@@ -1170,11 +1170,11 @@ static bool _rasterDirectImage(SwSurface* surface, const SwImage* image, const S
             auto src = sbuffer;
             if (opacity == 255) {
                 for (auto x = region.min.x; x < region.max.x; ++x, ++dst, ++src) {
-                    *dst = *src + MULTIPLY(*dst, ~*src);
+                    *dst = *src + MULTIPLY(*dst, IA(*src));
                 }
             } else {
                 for (auto x = region.min.x; x < region.max.x; ++x, ++dst, ++src) {
-                    *dst = INTERPOLATE8(*src, *dst, opacity);
+                    *dst = INTERPOLATE8(A(*src), *dst, opacity);
                 }
             }
         }
@@ -1528,8 +1528,7 @@ static bool _rasterTranslucentGradientRle(SwSurface* surface, const SwRle* rle, 
     } else if (surface->channelSize == sizeof(uint8_t)) {
         for (uint32_t i = 0; i < rle->size; ++i, ++span) {
             auto dst = &surface->buf8[span->y * surface->stride + span->x];
-            if (span->coverage == 255) fillMethod()(fill, dst, span->y, span->x, span->len, _opMaskNone, 255);
-            else fillMethod()(fill, dst, span->y, span->x, span->len, _opMaskAdd, span->coverage);
+            fillMethod()(fill, dst, span->y, span->x, span->len, _opMaskAdd, span->coverage);
         }
     }
     return true;
@@ -1586,9 +1585,9 @@ static bool _rasterRadialGradientRle(SwSurface* surface, const SwRle* rle, const
         if (_matting(surface)) return _rasterGradientMattedRle<FillRadial>(surface, rle, fill);
         else return _rasterGradientMaskedRle<FillRadial>(surface, rle, fill);
     } else if (_blending(surface)) {
-        _rasterBlendingGradientRle<FillRadial>(surface, rle, fill);
+        return _rasterBlendingGradientRle<FillRadial>(surface, rle, fill);
     } else {
-        if (fill->translucent) _rasterTranslucentGradientRle<FillRadial>(surface, rle, fill);
+        if (fill->translucent) return _rasterTranslucentGradientRle<FillRadial>(surface, rle, fill);
         else return _rasterSolidGradientRle<FillRadial>(surface, rle, fill);
     }
     return false;

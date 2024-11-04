@@ -305,7 +305,6 @@ void LottieBuilder::updateGradientFill(LottieGroup* parent, LottieObject** child
     //TODO: reuse the fill instance?
     ctx->propagator->fill(unique_ptr<Fill>(fill->fill(frameNo, exps)));
     ctx->propagator->fill(fill->rule);
-    ctx->propagator->opacity(MULTIPLY(fill->opacity(frameNo), PP(ctx->propagator)->opacity));
 
     if (ctx->propagator->strokeWidth() > 0) ctx->propagator->order(true);
 }
@@ -409,7 +408,7 @@ static void _appendRect(Shape* shape, float x, float y, float w, float h, float 
             }
         }
 
-        if (offsetPath) offsetPath->modifyRect(commands, 5, points, 4, P(shape)->rs.path.cmds, P(shape)->rs.path.pts, clockwise);
+        if (offsetPath) offsetPath->modifyRect(commands, 5, points, 4, P(shape)->rs.path.cmds, P(shape)->rs.path.pts);
         else shape->appendPath(commands, 5, points, 4);
     //round rect
     } else {
@@ -462,7 +461,7 @@ static void _appendRect(Shape* shape, float x, float y, float w, float h, float 
             }
         }
 
-        if (offsetPath) offsetPath->modifyRect(commands, cmdCnt, points, ptsCnt, P(shape)->rs.path.cmds, P(shape)->rs.path.pts, clockwise);
+        if (offsetPath) offsetPath->modifyRect(commands, cmdCnt, points, ptsCnt, P(shape)->rs.path.cmds, P(shape)->rs.path.pts);
         else shape->appendPath(commands, cmdCnt, points, ptsCnt);
     }
 }
@@ -557,7 +556,7 @@ void LottieBuilder::updateEllipse(LottieGroup* parent, LottieObject** child, flo
 void LottieBuilder::updatePath(LottieGroup* parent, LottieObject** child, float frameNo, TVG_UNUSED Inlist<RenderContext>& contexts, RenderContext* ctx)
 {
     auto path = static_cast<LottiePath*>(*child);
-    //TODO: use direction for paths' offsetPath
+
     if (!ctx->repeaters.empty()) {
         auto shape = path->pooling();
         shape->reset();
@@ -692,11 +691,11 @@ static void _updateStar(TVG_UNUSED LottieGroup* parent, LottiePolyStar* star, Ma
         if (offsetPath) {
             auto intermediate = Shape::gen();
             roundness->modifyPolystar(P(shape)->rs.path.cmds, P(shape)->rs.path.pts, P(intermediate)->rs.path.cmds, P(intermediate)->rs.path.pts, outerRoundness, hasRoundness);
-            offsetPath->modifyPolystar(P(intermediate)->rs.path.cmds, P(intermediate)->rs.path.pts, P(merging)->rs.path.cmds, P(merging)->rs.path.pts, star->clockwise);
+            offsetPath->modifyPolystar(P(intermediate)->rs.path.cmds, P(intermediate)->rs.path.pts, P(merging)->rs.path.cmds, P(merging)->rs.path.pts);
         } else {
             roundness->modifyPolystar(P(shape)->rs.path.cmds, P(shape)->rs.path.pts, P(merging)->rs.path.cmds, P(merging)->rs.path.pts, outerRoundness, hasRoundness);
         }
-    } else if (offsetPath) offsetPath->modifyPolystar(P(shape)->rs.path.cmds, P(shape)->rs.path.pts, P(merging)->rs.path.cmds, P(merging)->rs.path.pts, star->clockwise);
+    } else if (offsetPath) offsetPath->modifyPolystar(P(shape)->rs.path.cmds, P(shape)->rs.path.pts, P(merging)->rs.path.cmds, P(merging)->rs.path.pts);
 }
 
 
@@ -778,11 +777,11 @@ static void _updatePolygon(LottieGroup* parent, LottiePolyStar* star, Matrix* tr
         if (offsetPath) {
             auto intermediate = Shape::gen();
             roundness->modifyPolystar(P(shape)->rs.path.cmds, P(shape)->rs.path.pts, P(intermediate)->rs.path.cmds, P(intermediate)->rs.path.pts, 0.0f, false);
-            offsetPath->modifyPolystar(P(intermediate)->rs.path.cmds, P(intermediate)->rs.path.pts, P(merging)->rs.path.cmds, P(merging)->rs.path.pts, star->clockwise);
+            offsetPath->modifyPolystar(P(intermediate)->rs.path.cmds, P(intermediate)->rs.path.pts, P(merging)->rs.path.cmds, P(merging)->rs.path.pts);
         } else {
             roundness->modifyPolystar(P(shape)->rs.path.cmds, P(shape)->rs.path.pts, P(merging)->rs.path.cmds, P(merging)->rs.path.pts, 0.0f, false);
         }
-    } else if (offsetPath) offsetPath->modifyPolystar(P(shape)->rs.path.cmds, P(shape)->rs.path.pts, P(merging)->rs.path.cmds, P(merging)->rs.path.pts, star->clockwise);
+    } else if (offsetPath) offsetPath->modifyPolystar(P(shape)->rs.path.cmds, P(shape)->rs.path.pts, P(merging)->rs.path.cmds, P(merging)->rs.path.pts);
 }
 
 
@@ -1062,43 +1061,50 @@ void LottieBuilder::updateText(LottieLayer* layer, float frameNo)
                     shape->stroke(doc.stroke.color.rgb[0], doc.stroke.color.rgb[1], doc.stroke.color.rgb[2]);
                 }
 
-                //text range process
-                for (auto s = text->ranges.begin(); s < text->ranges.end(); ++s) {
-                    float start, end;
-                    (*s)->range(frameNo, float(totalChars), start, end);
+                if (!text->ranges.empty()) {
+                    Point scaling = {1.0f, 1.0f};
+                    auto rotation = 0.0f;
+                    Point translation = {0.0f, 0.0f};
 
-                    auto basedIdx = idx;
-                    if ((*s)->based == LottieTextRange::Based::CharsExcludingSpaces) basedIdx = idx - space;
-                    else if ((*s)->based == LottieTextRange::Based::Words) basedIdx = line + space;
-                    else if ((*s)->based == LottieTextRange::Based::Lines) basedIdx = line;
+                    //text range process
+                    for (auto s = text->ranges.begin(); s < text->ranges.end(); ++s) {
+                        float start, end;
+                        (*s)->range(frameNo, float(totalChars), start, end);
 
-                    if (basedIdx < start || basedIdx >= end) continue;
-                    auto matrix = shape->transform();
+                        auto basedIdx = idx;
+                        if ((*s)->based == LottieTextRange::Based::CharsExcludingSpaces) basedIdx = idx - space;
+                        else if ((*s)->based == LottieTextRange::Based::Words) basedIdx = line + space;
+                        else if ((*s)->based == LottieTextRange::Based::Lines) basedIdx = line;
 
-                    shape->opacity((*s)->style.opacity(frameNo));
+                        if (basedIdx < start || basedIdx >= end) continue;
 
-                    auto color = (*s)->style.fillColor(frameNo);
-                    shape->fill(color.rgb[0], color.rgb[1], color.rgb[2], (*s)->style.fillOpacity(frameNo));
+                        translation = translation + (*s)->style.position(frameNo);
+                        auto temp = (*s)->style.scale(frameNo);
+                        scaling.x *= temp.x * 0.01f;
+                        scaling.y *= temp.y * 0.01f;
+                        rotation += (*s)->style.rotation(frameNo);
 
-                    rotate(&matrix, (*s)->style.rotation(frameNo));
+                        shape->opacity((*s)->style.opacity(frameNo));
 
-                    auto glyphScale = (*s)->style.scale(frameNo) * 0.01f;
-                    tvg::scale(&matrix, glyphScale.x, glyphScale.y);
+                        auto color = (*s)->style.fillColor(frameNo);
+                        shape->fill(color.rgb[0], color.rgb[1], color.rgb[2], (*s)->style.fillOpacity(frameNo));
 
-                    auto position = (*s)->style.position(frameNo);
-                    translate(&matrix, position.x, position.y);
+                        if (doc.stroke.render) {
+                            auto strokeColor = (*s)->style.strokeColor(frameNo);
+                            shape->stroke((*s)->style.strokeWidth(frameNo) / scale);
+                            shape->stroke(strokeColor.rgb[0], strokeColor.rgb[1], strokeColor.rgb[2], (*s)->style.strokeOpacity(frameNo));
+                        }
+                        cursor.x += (*s)->style.letterSpacing(frameNo);
 
-                    shape->transform(matrix);
-
-                    if (doc.stroke.render) {
-                        auto strokeColor = (*s)->style.strokeColor(frameNo);
-                        shape->stroke((*s)->style.strokeWidth(frameNo) / scale);
-                        shape->stroke(strokeColor.rgb[0], strokeColor.rgb[1], strokeColor.rgb[2], (*s)->style.strokeOpacity(frameNo));
+                        auto spacing = (*s)->style.lineSpacing(frameNo);
+                        if (spacing > lineSpacing) lineSpacing = spacing;
                     }
-                    cursor.x += (*s)->style.letterSpacing(frameNo);
-
-                    auto spacing = (*s)->style.lineSpacing(frameNo);
-                    if (spacing > lineSpacing) lineSpacing = spacing;
+                    Matrix matrix;
+                    identity(&matrix);
+                    translate(&matrix, translation.x / scale + cursor.x, translation.y / scale + cursor.y);
+                    tvg::scale(&matrix, scaling.x, scaling.y);
+                    rotate(&matrix, rotation);
+                    shape->transform(matrix);
                 }
 
                 scene->push(cast(shape));
@@ -1130,12 +1136,21 @@ void LottieBuilder::updateMaskings(LottieLayer* layer, float frameNo)
     auto pMask = static_cast<LottieMask*>(layer->masks[0]);
     auto pMethod = pMask->method;
     auto opacity = pMask->opacity(frameNo);
+    auto expand = pMask->expand(frameNo);
 
     auto pShape = layer->pooling();
     pShape->reset();
     pShape->fill(255, 255, 255, opacity);
     pShape->transform(layer->cache.matrix);
-    pMask->pathset(frameNo, P(pShape)->rs.path.cmds, P(pShape)->rs.path.pts, nullptr, nullptr, nullptr, exps);
+
+    //Apply Masking Expansion (Offset)
+    if (expand == 0.0f) {
+        pMask->pathset(frameNo, P(pShape)->rs.path.cmds, P(pShape)->rs.path.pts, nullptr, nullptr, nullptr, exps);
+    } else {
+        //TODO: Once path direction support is implemented, ensure that the direction is ignored here
+        auto offset = LottieOffsetModifier(pMask->expand(frameNo));
+        pMask->pathset(frameNo, P(pShape)->rs.path.cmds, P(pShape)->rs.path.pts, nullptr, nullptr, &offset, exps);
+    }
 
     auto compMethod = (pMethod == CompositeMethod::SubtractMask || pMethod == CompositeMethod::InvAlphaMask) ? CompositeMethod::InvAlphaMask : CompositeMethod::AlphaMask;
 
@@ -1206,7 +1221,7 @@ void LottieBuilder::updateEffect(LottieLayer* layer, float frameNo)
         switch ((*ef)->type) {
             case LottieEffect::GaussianBlur: {
                 auto effect = static_cast<LottieGaussianBlur*>(*ef);
-                layer->scene->push(SceneEffect::GaussianBlur, sqrt(effect->blurness(frameNo)), effect->direction(frameNo) - 1, effect->wrap(frameNo), 50);
+                layer->scene->push(SceneEffect::GaussianBlur, sqrt(effect->blurness(frameNo)), effect->direction(frameNo) - 1, effect->wrap(frameNo), 25);
                 break;
             }
             default: break;
