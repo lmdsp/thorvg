@@ -1169,7 +1169,7 @@ void LottieBuilder::updateText(LottieLayer* layer, float frameNo)
 
                     // TextGroup transformation is performed once
                     if (textGroup->paints().size() == 0 && needGroup) {
-                        identity(&textGroupMatrix);
+                        tvg::identity(&textGroupMatrix);
                         translate(&textGroupMatrix, cursor.x, cursor.y);
 
                         auto alignment = text->alignOption.anchor(frameNo);
@@ -1178,7 +1178,7 @@ void LottieBuilder::updateText(LottieLayer* layer, float frameNo)
                         textGroupMatrix.e13 += alignment.x;
                         textGroupMatrix.e23 += alignment.y;
 
-                        rotate(&textGroupMatrix, rotation);
+                        tvg::rotate(&textGroupMatrix, rotation);
 
                         auto pivotX = alignment.x * -1;
                         auto pivotY = alignment.y * -1;
