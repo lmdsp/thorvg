@@ -48,12 +48,13 @@ public:
     bool target(WGPUInstance instance, WGPUSurface surface, uint32_t w, uint32_t h, WGPUDevice device);
     bool target(WGPUSurface surface, uint32_t w, uint32_t h);
 
-    RenderCompositor* target(const RenderRegion& region, ColorSpace cs) override;
+    RenderCompositor* target(const RenderRegion& region, ColorSpace cs, CompositionFlag flags) override;
     bool beginComposite(RenderCompositor* cmp, CompositeMethod method, uint8_t opacity) override;
     bool endComposite(RenderCompositor* cmp) override;
 
-    bool prepare(RenderEffect* effect) override;
-    bool effect(RenderCompositor* cmp, const RenderEffect* effect) override;
+    void prepare(TVG_UNUSED RenderEffect* effect, TVG_UNUSED const Matrix& transform) override;
+    bool region(RenderEffect* effect) override;
+    bool render(RenderCompositor* cmp, const RenderEffect* effect, bool direct) override;
 
     static WgRenderer* gen();
     static bool init(uint32_t threads);

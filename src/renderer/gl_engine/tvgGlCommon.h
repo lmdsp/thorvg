@@ -52,6 +52,11 @@
           } \
         } while(0)
 
+static inline float getScaleFactor(const Matrix& m)
+{
+    return sqrtf(m.e11 * m.e11 + m.e21 * m.e21);
+}
+
 enum class GlStencilMode {
     None,
     FillWinding,
@@ -89,9 +94,9 @@ struct GlLinearGradientBlock
 struct GlRadialGradientBlock
 {
     alignas(16) float nStops[4] = {};
-    alignas(16) float centerPos[2] = {};
-    alignas(8) float radius[2] = {};
-    alignas(8) float stopPoints[MAX_GRADIENT_STOPS] = {};
+    alignas(16) float centerPos[4] = {};
+    alignas(16) float radius[2] = {};
+    alignas(16) float stopPoints[MAX_GRADIENT_STOPS] = {};
     alignas(16) float stopColors[4 * MAX_GRADIENT_STOPS] = {};
 };
 

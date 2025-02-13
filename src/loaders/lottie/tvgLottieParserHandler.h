@@ -192,9 +192,10 @@ struct LookaheadParserHandler
     void getNull();
     bool parseNext();
     const char* nextObjectKey();
-    void skip(const char* key);
+    void skip(const char* key = nullptr);
     void skipOut(int depth);
     int peekType();
+    char* getPos();
 };
 
 #endif //_TVG_LOTTIE_PARSER_HANDLER_H_

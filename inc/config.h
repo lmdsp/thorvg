@@ -24,10 +24,13 @@
 
 #define THORVG_TVG_LOADER_SUPPORT    1
 
-#define THORVG_VERSION_STRING        "0.15.3"
+#define THORVG_VERSION_STRING        "0.15.10"
 
 #if 0
 #    ifdef _DEBUG
 #        define THORVG_LOG_ENABLED 1
 #    endif// _DEBUG
 #endif    //
+
+
+#define THORVG_FILE_IO_SUPPORT 1

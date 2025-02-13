@@ -77,7 +77,11 @@ Result Scene::push(unique_ptr<Paint> paint) noexcept
 {
     auto p = paint.release();
     if (!p) return Result::MemoryCorruption;
-    PP(p)->ref();
+    P(p)->ref();
+
+    //Relocated the paint to the current scene space
+    P(p)->renderFlag |= RenderUpdateFlag::Transform;
+
     pImpl->paints.push_back(p);
 
     return Result::Success;
@@ -117,7 +121,23 @@ Result Scene::push(SceneEffect effect, ...) noexcept
 
     switch (effect) {
         case SceneEffect::GaussianBlur: {
-            re = RenderEffectGaussian::gen(args);
+            re = RenderEffectGaussianBlur::gen(args);
+            break;
+        }
+        case SceneEffect::DropShadow: {
+            re = RenderEffectDropShadow::gen(args);
+            break;
+        }
+        case SceneEffect::Fill: {
+            re = RenderEffectFill::gen(args);
+            break;
+        }
+        case SceneEffect::Tint: {
+            re = RenderEffectTint::gen(args);
+            break;
+        }
+        case SceneEffect::Tritone: {
+            re = RenderEffectTritone::gen(args);
             break;
         }
         default: break;

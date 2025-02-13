@@ -43,6 +43,10 @@ void LottieLoader::run(unsigned tid)
             ScopedLock lock(key);
             comp = parser.comp;
         }
+        if (parser.slots) {
+            override(parser.slots, true);
+            parser.slots = nullptr;
+        }
         builder->build(comp);
 
         release();
@@ -57,8 +61,6 @@ void LottieLoader::release()
         free((char*)content);
         content = nullptr;
     }
-    free(dirName);
-    dirName = nullptr;
 }
 
 
@@ -81,6 +83,8 @@ LottieLoader::~LottieLoader()
     //TODO: correct position?
     delete(comp);
     delete(builder);
+
+    free(dirName);
 }
 
 
@@ -215,6 +219,7 @@ bool LottieLoader::open(const char* data, uint32_t size, bool copy)
 
 bool LottieLoader::open(const string& path)
 {
+#ifdef THORVG_FILE_IO_SUPPORT
     auto f = fopen(path.c_str(), "r");
     if (!f) return false;
 
@@ -230,7 +235,7 @@ bool LottieLoader::open(const string& path)
     fseek(f, 0, SEEK_SET);
     auto ret = fread(content, sizeof(char), size, f);
     if (ret < size) {
-       
+
         //hack for  windows !!! don't know why but sometimes size is not correct
         // e.g. size == 33113, ret == 31708
         #define FLUX_TVG_LOTTIE_PATCHED
@@ -250,6 +255,9 @@ bool LottieLoader::open(const string& path)
     this->copy = true;
 
     return header();
+#else
+    return false;
+#endif
 }
 
 
@@ -294,34 +302,35 @@ Paint* LottieLoader::paint()
 }
 
 
-bool LottieLoader::override(const char* slot)
+bool LottieLoader::override(const char* slots, bool byDefault)
 {
     if (!ready() || comp->slots.count == 0) return false;
 
-    auto success = true;
-
     //override slots
-    if (slot) {
+    if (slots) {
         //Copy the input data because the JSON parser will encode the data immediately.
-        auto temp = strdup(slot);
+        auto temp = byDefault ? slots : strdup(slots);
 
         //parsing slot json
         LottieParser parser(temp, dirName);
         parser.comp = comp;
 
         auto idx = 0;
+        auto succeed = false;
         while (auto sid = parser.sid(idx == 0)) {
+            auto applied = false;
             for (auto s = comp->slots.begin(); s < comp->slots.end(); ++s) {
                 if (strcmp((*s)->sid, sid)) continue;
-                if (!parser.apply(*s)) success = false;
+                if (parser.apply(*s, byDefault)) succeed = applied = true;
                 break;
             }
+            if (!applied) parser.skip(sid);
             ++idx;
         }
-
-        if (idx < 1) success = false;
-        free(temp);
-        rebuild = overridden = success;
+        free((char*)temp);
+        rebuild = succeed;
+        overridden |= succeed;
+        return rebuild;
     //reset slots
     } else if (overridden) {
         for (auto s = comp->slots.begin(); s < comp->slots.end(); ++s) {
@@ -330,7 +339,7 @@ bool LottieLoader::override(const char* slot)
         overridden = false;
         rebuild = true;
     }
-    return success;
+    return true;
 }
 
 

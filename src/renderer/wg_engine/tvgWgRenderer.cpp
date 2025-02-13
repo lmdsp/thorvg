@@ -347,7 +347,7 @@ bool WgRenderer::target(WGPUSurface surface, uint32_t w, uint32_t h) {
 }
 
 
-RenderCompositor* WgRenderer::target(TVG_UNUSED const RenderRegion& region, TVG_UNUSED ColorSpace cs)
+RenderCompositor* WgRenderer::target(const RenderRegion& region, TVG_UNUSED ColorSpace cs, TVG_UNUSED CompositionFlag flags)
 {
     mCompositorStack.push(new WgCompose);
     mCompositorStack.last()->aabb = region;
@@ -424,14 +424,20 @@ bool WgRenderer::endComposite(RenderCompositor* cmp)
 }
 
 
-bool WgRenderer::prepare(TVG_UNUSED RenderEffect* effect)
+void WgRenderer::prepare(TVG_UNUSED RenderEffect* effect, TVG_UNUSED const Matrix& transform)
+{
+    //TODO: prepare the effect
+}
+
+
+bool WgRenderer::region(TVG_UNUSED RenderEffect* effect)
 {
     //TODO: Return if the current post effect requires the region expansion
     return false;
 }
 
 
-bool WgRenderer::effect(TVG_UNUSED RenderCompositor* cmp, TVG_UNUSED const RenderEffect* effect)
+bool WgRenderer::render(TVG_UNUSED RenderCompositor* cmp, TVG_UNUSED const RenderEffect* effect, TVG_UNUSED bool direct)
 {
     TVGLOG("WG_ENGINE", "SceneEffect(%d) is not supported", (int)effect->type);
     return false;

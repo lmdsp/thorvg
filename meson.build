@@ -1,7 +1,7 @@
 project('thorvg',
         'cpp',
         default_options : ['buildtype=debugoptimized', 'b_sanitize=none', 'werror=false', 'optimization=3', 'cpp_std=c++14', 'strip=true'],
-        version : '0.15.3',
+        version : '0.15.10',
         license : 'MIT')
 
 config_h = configuration_data()
@@ -126,6 +126,12 @@ endif
 if get_option('log')
     config_h.set10('THORVG_LOG_ENABLED', true)
 endif
+
+#File IO
+if get_option('file') == true
+    config_h.set10('THORVG_FILE_IO_SUPPORT', true)
+endif
+
 
 #Extra
 lottie_expressions = lottie_loader and get_option('extra').contains('lottie_expressions')

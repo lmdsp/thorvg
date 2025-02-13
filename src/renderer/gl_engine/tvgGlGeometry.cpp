@@ -142,7 +142,7 @@ bool GlGeometry::draw(GlRenderTask* task, GlStageBuffer* gpuBuffer, RenderUpdate
     if (indexBuffer->count == 0) return false;
 
     uint32_t vertexOffset = gpuBuffer->push(vertexBuffer->data, vertexBuffer->count * sizeof(float));
-    uint32_t indexOffset = gpuBuffer->push(indexBuffer->data, indexBuffer->count * sizeof(uint32_t));
+    uint32_t indexOffset = gpuBuffer->pushIndex(indexBuffer->data, indexBuffer->count * sizeof(uint32_t));
 
     // vertex layout
     if (flag & RenderUpdateFlag::Image) {
@@ -220,7 +220,7 @@ RenderRegion GlGeometry::getBounds() const
             static_cast<int32_t>(ceil(right - floor(left))),
             static_cast<int32_t>(ceil(bottom - floor(top))),
         };
-        if (bounds.x < 0 || bounds.y < 0 || bounds.w < 0 || bounds.h < 0) {
+        if (bounds.w < 0 || bounds.h < 0) {
             return mBounds;
         } else {
             return bounds;

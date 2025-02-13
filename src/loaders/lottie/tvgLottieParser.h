@@ -36,11 +36,14 @@ public:
     }
 
     bool parse();
-    bool apply(LottieSlot* slot);
+    bool apply(LottieSlot* slot, bool byDefault);
     const char* sid(bool first = false);
+    void captureSlots(const char* key);
+    template<LottieProperty::Type type = LottieProperty::Type::Invalid> void registerSlot(LottieObject* obj, const char* sid);
 
     LottieComposition* comp = nullptr;
     const char* dirName = nullptr;       //base resource directory
+    char* slots = nullptr;
 
 private:
     RGB24 getColor(const char *str);
@@ -55,14 +58,14 @@ private:
     void getInterpolatorPoint(Point& pt);
     void getPathSet(LottiePathSet& path);
     void getLayerSize(float& val);
-    void getValue(TextDocument& doc);
-    void getValue(PathSet& path);
-    void getValue(Array<Point>& pts);
-    void getValue(ColorStop& color);
-    void getValue(float& val);
-    void getValue(uint8_t& val);
-    void getValue(int8_t& val);
-    void getValue(RGB24& color);
+    bool getValue(TextDocument& doc);
+    bool getValue(PathSet& path);
+    bool getValue(Array<Point>& pts);
+    bool getValue(ColorStop& color);
+    bool getValue(float& val);
+    bool getValue(uint8_t& val);
+    bool getValue(int8_t& val);
+    bool getValue(RGB24& color);
     bool getValue(Point& pt);
 
     template<typename T> bool parseTangent(const char *key, LottieVectorFrame<T>& value);
@@ -74,7 +77,7 @@ private:
 
     LottieObject* parseObject();
     LottieObject* parseAsset();
-    LottieImage* parseImage(const char* data, const char* subPath, bool embedded, float width, float height);
+    void parseImage(LottieImage* image, const char* data, const char* subPath, bool embedded, float width, float height);
     LottieLayer* parseLayer(LottieLayer* precomp);
     LottieObject* parseGroup();
     LottieRect* parseRect();
@@ -95,7 +98,13 @@ private:
     LottieFont* parseFont();
     LottieMarker* parseMarker();
 
-    void parseGaussianBlur(LottieGaussianBlur* effect);
+    void parseEffect(LottieEffect* effect, void(LottieParser::*func)(LottieEffect*, int));
+    void parseStroke(LottieEffect* effect, int idx);
+    void parseTritone(LottieEffect* effect, int idx);
+    void parseTint(LottieEffect* effect, int idx);
+    void parseFill(LottieEffect* effect, int idx);
+    void parseGaussianBlur(LottieEffect* effect, int idx);
+    void parseDropShadow(LottieEffect* effect, int idx);
 
     bool parseDirection(LottieShape* shape, const char* key);
     bool parseCommon(LottieObject* obj, const char* key);
@@ -107,7 +116,9 @@ private:
     void parseTimeRemap(LottieLayer* layer);
     void parseStrokeDash(LottieStroke* stroke);
     void parseGradient(LottieGradient* gradient, const char* key);
+    void parseColorStop(LottieGradient* gradient);
     void parseTextRange(LottieText* text);
+    void parseTextAlignmentOption(LottieText* text);
     void parseAssets();
     void parseFonts();
     void parseChars(Array<LottieGlyph*>& glyphs);

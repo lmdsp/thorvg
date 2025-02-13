@@ -21,6 +21,7 @@
  */
 
 #include "tvgMath.h"
+#include "tvgFill.h"
 #include "tvgGlRenderer.h"
 #include "tvgGlGpuBuffer.h"
 #include "tvgGlGeometry.h"
@@ -167,7 +168,7 @@ void GlRenderer::drawPrimitive(GlShape& sdata, uint8_t r, uint8_t g, uint8_t b, 
     a = MULTIPLY(a, sdata.opacity);
 
     if (flag & RenderUpdateFlag::Stroke) {
-        float strokeWidth = sdata.rshape->strokeWidth() * sdata.geometry->getTransformMatrix().e11;
+        float strokeWidth = sdata.rshape->strokeWidth() * getScaleFactor(sdata.geometry->getTransformMatrix());
         if (strokeWidth < MIN_GL_STROKE_WIDTH) {
             float alpha = strokeWidth / MIN_GL_STROKE_WIDTH;
             a = MULTIPLY(a, static_cast<uint8_t>(alpha * 255));
@@ -341,7 +342,7 @@ void GlRenderer::drawPrimitive(GlShape& sdata, const Fill* fill, RenderUpdateFla
         });
     }
 
-    float alpha = 1.0f;
+    auto alpha = sdata.opacity / 255.f;
 
     if (flag & RenderUpdateFlag::GradientStroke) {
         float strokeWidth = sdata.rshape->strokeWidth();
@@ -400,7 +401,7 @@ void GlRenderer::drawPrimitive(GlShape& sdata, const Fill* fill, RenderUpdateFla
 
             uint32_t nStops = 0;
             for (uint32_t i = 0; i < stopCnt; ++i) {
-                if (i > 0 && gradientBlock.stopPoints[nStops - 1] > stops[i].offset) continue; 
+                if (i > 0 && gradientBlock.stopPoints[nStops - 1] > stops[i].offset) continue;
 
                 gradientBlock.stopPoints[i] = stops[i].offset;
                 gradientBlock.stopColors[i * 4 + 0] = stops[i].r / 255.f;
@@ -411,12 +412,20 @@ void GlRenderer::drawPrimitive(GlShape& sdata, const Fill* fill, RenderUpdateFla
             }
             gradientBlock.nStops[0] = nStops * 1.f;
 
-            float x, y, r;
-            radialFill->radial(&x, &y, &r);
+            float x, y, r, fx, fy, fr;
+            x = P(radialFill)->cx;
+            y = P(radialFill)->cy;
+            r = P(radialFill)->r;
+            fx = P(radialFill)->fx;
+            fy = P(radialFill)->fy;
+            fr = P(radialFill)->fr;
 
-            gradientBlock.centerPos[0] = x;
-            gradientBlock.centerPos[1] = y;
-            gradientBlock.radius[0] = r;
+            gradientBlock.centerPos[0] = fx;
+            gradientBlock.centerPos[1] = fy;
+            gradientBlock.centerPos[2] = x;
+            gradientBlock.centerPos[3] = y;
+            gradientBlock.radius[0] = fr;
+            gradientBlock.radius[1] = r;
 
             gradientBinding = GlBindingResource{
                 2,
@@ -478,7 +487,7 @@ void GlRenderer::drawClip(Array<RenderData>& clips)
     mat4[15] = 1.f;
 
     auto identityVertexOffset = mGpuBuffer->push(identityVertex.data, 8 * sizeof(float));
-    auto identityIndexOffset = mGpuBuffer->push(identityIndex.data, 6 * sizeof(uint32_t));
+    auto identityIndexOffset = mGpuBuffer->pushIndex(identityIndex.data, 6 * sizeof(uint32_t));
     auto mat4Offset = mGpuBuffer->push(mat4, 16 * sizeof(float), true);
 
     Array<int32_t> clipDepths(clips.count);
@@ -744,7 +753,7 @@ void GlRenderer::prepareCmpTask(GlRenderTask* task, const RenderRegion& vp, uint
     indices.push(3);
 
     uint32_t vertexOffset = mGpuBuffer->push(vertices.data, vertices.count * sizeof(float));
-    uint32_t indexOffset = mGpuBuffer->push(indices.data, indices.count * sizeof(uint32_t));
+    uint32_t indexOffset = mGpuBuffer->pushIndex(indices.data, indices.count * sizeof(uint32_t));
 
     task->addVertexLayout(GlVertexLayout{0, 2, 4 * sizeof(float), vertexOffset});
     task->addVertexLayout(GlVertexLayout{1, 2, 4 * sizeof(float), vertexOffset + 2 * sizeof(float)});
@@ -953,10 +962,11 @@ bool GlRenderer::sync()
 
     task->setTargetViewport(RenderRegion{0, 0, static_cast<int32_t>(surface.w), static_cast<int32_t>(surface.h)});
 
-    mGpuBuffer->flushToGPU();
-    mGpuBuffer->bind();
+    if (mGpuBuffer->flushToGPU()) {
+        mGpuBuffer->bind();
 
-    task->run();
+        task->run();
+    }
 
     mGpuBuffer->unbind();
 
@@ -1006,7 +1016,7 @@ bool GlRenderer::postRender()
 }
 
 
-RenderCompositor* GlRenderer::target(const RenderRegion& region, TVG_UNUSED ColorSpace cs)
+RenderCompositor* GlRenderer::target(const RenderRegion& region, TVG_UNUSED ColorSpace cs, TVG_UNUSED CompositionFlag flags)
 {
     auto vp = region;
     if (currentPass()->isEmpty()) return nullptr;
@@ -1062,14 +1072,20 @@ bool GlRenderer::endComposite(RenderCompositor* cmp)
 }
 
 
-bool GlRenderer::prepare(TVG_UNUSED RenderEffect* effect)
+void GlRenderer::prepare(TVG_UNUSED RenderEffect* effect, TVG_UNUSED const Matrix& transform)
+{
+    //TODO: prepare the effect
+}
+
+
+bool GlRenderer::region(TVG_UNUSED RenderEffect* effect)
 {
     //TODO: Return if the current post effect requires the region expansion
     return false;
 }
 
 
-bool GlRenderer::effect(TVG_UNUSED RenderCompositor* cmp, TVG_UNUSED const RenderEffect* effect)
+bool GlRenderer::render(TVG_UNUSED RenderCompositor* cmp, TVG_UNUSED const RenderEffect* effect, TVG_UNUSED bool direct)
 {
     TVGLOG("GL_ENGINE", "SceneEffect(%d) is not supported", (int)effect->type);
     return false;
@@ -1218,33 +1234,36 @@ bool GlRenderer::renderShape(RenderData data)
 
     if (flags & (RenderUpdateFlag::Stroke | RenderUpdateFlag::GradientStroke)) drawDepth2 = currentPass()->nextDrawDepth();
 
-
     if (!sdata->clips.empty()) drawClip(sdata->clips);
 
-    if (flags & (RenderUpdateFlag::Color | RenderUpdateFlag::Gradient))
-    {
-        auto gradient = sdata->rshape->fill;
-        if (gradient) drawPrimitive(*sdata, gradient, RenderUpdateFlag::Gradient, drawDepth1);
-        else {
-            sdata->rshape->fillColor(&r, &g, &b, &a);
-            if (a > 0)
-            {
+    auto processFill = [&]() {
+        if (flags & (RenderUpdateFlag::Color | RenderUpdateFlag::Gradient)) {
+            if (const auto& gradient = sdata->rshape->fill) {
+                drawPrimitive(*sdata, gradient, RenderUpdateFlag::Gradient, drawDepth1);
+            } else if (sdata->rshape->color[3] > 0) {
+                sdata->rshape->fillColor(&r, &g, &b, &a);
                 drawPrimitive(*sdata, r, g, b, a, RenderUpdateFlag::Color, drawDepth1);
             }
         }
-    }
+    };
 
-    if (flags & (RenderUpdateFlag::Stroke | RenderUpdateFlag::GradientStroke))
-    {
-        auto gradient =  sdata->rshape->strokeFill();
-        if (gradient) {
-            drawPrimitive(*sdata, gradient, RenderUpdateFlag::GradientStroke, drawDepth2);
-        } else {
-            if (sdata->rshape->strokeColor(&r, &g, &b, &a) && a > 0)
-            {
+    auto processStroke = [&]() {
+        if (!sdata->rshape->stroke) return;
+        if (flags & (RenderUpdateFlag::Stroke | RenderUpdateFlag::GradientStroke)) {
+            if (const auto& gradient = sdata->rshape->strokeFill()) {
+                drawPrimitive(*sdata, gradient, RenderUpdateFlag::GradientStroke, drawDepth2);
+            } else if (sdata->rshape->strokeColor(&r, &g, &b, &a) && a > 0) {
                 drawPrimitive(*sdata, r, g, b, a, RenderUpdateFlag::Stroke, drawDepth2);
             }
         }
+    };
+
+    if (sdata->rshape->stroke && sdata->rshape->stroke->strokeFirst) {
+        processStroke();
+        processFill();
+    } else {
+        processFill();
+        processStroke();
     }
 
     return true;
@@ -1310,7 +1329,10 @@ RenderData GlRenderer::prepare(RenderSurface* image, RenderData data, const Matr
 
     sdata->geometry->tesselate(image, flags);
 
-    if (!clips.empty()) sdata->clips.push(clips);
+    if (!clips.empty()) {
+        sdata->clips.clear();
+        sdata->clips.push(clips);
+    }
 
     return sdata;
 }
@@ -1366,7 +1388,10 @@ RenderData GlRenderer::prepare(const RenderShape& rshape, RenderData data, const
         if (!sdata->geometry->tesselate(rshape, sdata->updateFlag)) return sdata;
     }
 
-    if (!clipper && !clips.empty()) sdata->clips.push(clips);
+    if (!clipper && !clips.empty()) {
+        sdata->clips.clear();
+        sdata->clips.push(clips);
+    }
 
     return sdata;
 }

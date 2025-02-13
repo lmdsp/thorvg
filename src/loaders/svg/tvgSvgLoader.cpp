@@ -200,7 +200,7 @@ static float _gradientToFloat(const SvgParser* svgParse, const char* str, bool& 
     isPercentage = false;
 
     if (strstr(str, "%")) {
-        parsedValue = parsedValue / 100.0;
+        parsedValue = parsedValue / 100.0f;
         isPercentage = true;
     }
     else if (strstr(str, "cm")) parsedValue *= PX_PER_CM;
@@ -225,7 +225,7 @@ static float _toOffset(const char* str)
     auto ptr = strstr(str, "%");
 
     if (ptr) {
-        parsedValue = parsedValue / 100.0;
+        parsedValue = parsedValue / 100.0f;
         if (end != ptr || (end + 1) != strEnd) return 0;
     } else if (end != strEnd) return 0;
 
@@ -2555,6 +2555,18 @@ static SvgStyleGradient* _createRadialGradient(SvgLoaderData* loader, const char
 }
 
 
+static SvgColor* _findLatestColor(const SvgLoaderData* loader)
+{
+    auto parent = loader->stack.count > 0 ? loader->stack.last() : loader->doc;
+
+    while (parent != nullptr) {
+        if (parent->style->curColorSet) return &parent->style->color;
+        parent = parent->parent;
+    }
+    return nullptr;
+}
+
+
 static bool _attrParseStopsStyle(void* data, const char* key, const char* value)
 {
     SvgLoaderData* loader = (SvgLoaderData*)data;
@@ -2564,7 +2576,13 @@ static bool _attrParseStopsStyle(void* data, const char* key, const char* value)
         stop->a = _toOpacity(value);
         loader->svgParse->flags = (loader->svgParse->flags | SvgStopStyleFlags::StopOpacity);
     } else if (!strcmp(key, "stop-color")) {
-        if (_toColor(value, &stop->r, &stop->g, &stop->b, nullptr)) {
+        if (!strcmp(value, "currentColor")) {
+            if (auto latestColor = _findLatestColor(loader)) {
+                stop->r = latestColor->r;
+                stop->g = latestColor->g;
+                stop->b = latestColor->b;
+            }
+        } else if (_toColor(value, &stop->r, &stop->g, &stop->b, nullptr)) {
             loader->svgParse->flags = (loader->svgParse->flags | SvgStopStyleFlags::StopColor);
         }
     } else {
@@ -2587,7 +2605,13 @@ static bool _attrParseStops(void* data, const char* key, const char* value)
             stop->a = _toOpacity(value);
         }
     } else if (!strcmp(key, "stop-color")) {
-        if (!(loader->svgParse->flags & SvgStopStyleFlags::StopColor)) {
+        if (!strcmp(value, "currentColor")) {
+            if (auto latestColor = _findLatestColor(loader)) {
+                stop->r = latestColor->r;
+                stop->g = latestColor->g;
+                stop->b = latestColor->b;
+            }
+        } else if (!(loader->svgParse->flags & SvgStopStyleFlags::StopColor)) {
             _toColor(value, &stop->r, &stop->g, &stop->b, nullptr);
         }
     } else if (!strcmp(key, "style")) {
@@ -3949,6 +3973,7 @@ bool SvgLoader::open(const char* data, uint32_t size, bool copy)
 
 bool SvgLoader::open(const string& path)
 {
+#ifdef THORVG_FILE_IO_SUPPORT
     clear();
 
     ifstream f;
@@ -3966,6 +3991,9 @@ bool SvgLoader::open(const string& path)
     size = filePath.size();
 
     return header();
+#else
+    return false;
+#endif
 }
 
 

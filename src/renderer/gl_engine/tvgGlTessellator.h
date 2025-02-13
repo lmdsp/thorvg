@@ -105,7 +105,6 @@ class Stroker final
         GlPoint firstPtDir = {};
         GlPoint prevPt = {};
         GlPoint prevPtDir = {};
-        bool hasMove = false;
     };
 public:
     Stroker(Array<float>* points, Array<uint32_t>* indices, const Matrix& matrix);
@@ -116,6 +115,7 @@ public:
     RenderRegion bounds() const;
 
 private:
+    void doTrimStroke(const PathCommand* cmds, uint32_t cmd_count, const Point* pts, uint32_t pts_count, bool simultaneous, float start, float end);
     void doStroke(const PathCommand* cmds, uint32_t cmd_count, const Point* pts, uint32_t pts_count);
     void doDashStroke(const PathCommand* cmds, uint32_t cmd_count, const Point* pts, uint32_t pts_count,
                       uint32_t dash_count, const float* dash_pattern);
@@ -143,7 +143,11 @@ private:
 
     void strokeSquare(const GlPoint& p, const GlPoint& outDir);
 
+    void strokeSquarePoint(const GlPoint& p);
+
     void strokeRound(const GlPoint& p, const GlPoint& outDir);
+
+    void strokeRoundPoint(const GlPoint& p);
 private:
     Array<float>* mResGlPoints;
     Array<uint32_t>* mResIndices;
