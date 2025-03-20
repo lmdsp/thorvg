@@ -1679,10 +1679,11 @@ void Stroker::stroke(const RenderShape *rshape)
     }
 
     const float *dash_pattern = nullptr;
-    auto dashCnt = rshape->strokeDash(&dash_pattern, nullptr);
+    auto dash_offset = 0.0f;
+    auto dashCnt = rshape->strokeDash(&dash_pattern, &dash_offset);
 
     if (dashCnt == 0) doStroke(cmds, cmdCnt, pts, ptsCnt);
-    else doDashStroke(cmds, cmdCnt, pts, ptsCnt, dashCnt, dash_pattern);
+    else doDashStroke(cmds, cmdCnt, pts, ptsCnt, dashCnt, dash_pattern, dash_offset);
 }
 
 
@@ -1810,7 +1811,7 @@ void Stroker::doStroke(const PathCommand *cmds, uint32_t cmd_count, const Point 
 }
 
 void Stroker::doDashStroke(const PathCommand *cmds, uint32_t cmd_count, const Point *pts, uint32_t pts_count,
-                           uint32_t dash_count, const float *dash_pattern)
+                           uint32_t dash_count, const float *dash_pattern, float dash_offset)
 {
     Array<PathCommand> dash_cmds{};
     Array<Point>       dash_pts{};
@@ -1818,7 +1819,7 @@ void Stroker::doDashStroke(const PathCommand *cmds, uint32_t cmd_count, const Po
     dash_cmds.reserve(20 * cmd_count);
     dash_pts.reserve(20 * pts_count);
 
-    DashStroke dash(&dash_cmds, &dash_pts, dash_count, dash_pattern);
+    DashStroke dash(&dash_cmds, &dash_pts, dash_count, dash_pattern, dash_offset);
 
     dash.doStroke(cmds, cmd_count, pts, pts_count);
 
@@ -2190,14 +2191,16 @@ void Stroker::strokeRound(const GlPoint& p, const GlPoint& outDir)
 }
 
 
-DashStroke::DashStroke(Array<PathCommand> *cmds, Array<Point> *pts, uint32_t dash_count, const float *dash_pattern)
+DashStroke::DashStroke(Array<PathCommand> *cmds, Array<Point> *pts, uint32_t dash_count, const float *dash_pattern, float dash_offset)
     : mCmds(cmds),
       mPts(pts),
       mDashCount(dash_count),
       mDashPattern(dash_pattern),
+      mDashOffset(dash_offset),
       mCurrLen(),
       mCurrIdx(),
       mCurOpGap(false),
+      mMove(true),
       mPtStart(),
       mPtCur()
 {
@@ -2206,6 +2209,26 @@ DashStroke::DashStroke(Array<PathCommand> *cmds, Array<Point> *pts, uint32_t das
 
 void DashStroke::doStroke(const PathCommand *cmds, uint32_t cmd_count, const Point *pts, uint32_t pts_count)
 {
+    int32_t idx = 0;
+    auto offset = mDashOffset;
+    bool gap = false;
+    if (!tvg::zero(mDashOffset)) {
+        auto len = 0.0f;
+        for (uint32_t i = 0; i < mDashCount; ++i) len += mDashPattern[i];
+        if (mDashCount % 2) len *= 2;
+
+        offset = fmodf(offset, len);
+        if (offset < 0) offset += len;
+
+        for (uint32_t i = 0; i < mDashCount * (mDashCount % 2 + 1); ++i, ++idx) {
+            auto curPattern = mDashPattern[i % mDashCount];
+            if (offset < curPattern) break;
+            offset -= curPattern;
+            gap = !gap;
+        }
+        idx = idx % mDashCount;
+    }
+
     for (uint32_t i = 0; i < cmd_count; i++) {
         switch (*cmds) {
             case PathCommand::Close: {
@@ -2215,9 +2238,10 @@ void DashStroke::doStroke(const PathCommand *cmds, uint32_t cmd_count, const Poi
 
             case PathCommand::MoveTo: {
                 // reset the dash state
-                mCurrIdx = 0;
-                mCurrLen = 0.f;
-                mCurOpGap = false;
+                mCurrIdx = idx;
+                mCurrLen = mDashPattern[idx] - offset;
+                mCurOpGap = gap;
+                mMove = true;
                 mPtStart = mPtCur = *pts;
                 pts++;
                 break;
@@ -2245,40 +2269,52 @@ void DashStroke::dashLineTo(const GlPoint &to)
 {
     float len = detail::_pointLength(mPtCur - to);
 
-    if (len < mCurrLen) {
+    if (tvg::zero(len)) {
+        this->moveTo(mPtCur);
+    } else if (len <= mCurrLen) {
         mCurrLen -= len;
 
         if (!mCurOpGap) {
-            this->moveTo(mPtCur);
+            if (mMove) {
+                this->moveTo(mPtCur);
+                mMove = false;
+            }
             this->lineTo(to);
         }
     } else {
         detail::Line curr{mPtCur, to};
 
-        while (len > mCurrLen) {
-            len -= mCurrLen;
-
-            detail::Line left, right;
-
-            detail::_lineSplitAt(curr, mCurrLen, &left, &right);
-
+        while (len - mCurrLen > 0.0001f) {
+            detail::Line right;
+            if (mCurrLen > 0.0f) {
+                detail::Line left;
+                detail::_lineSplitAt(curr, mCurrLen, &left, &right);
+                len -= mCurrLen;
+                if (!mCurOpGap) {
+                    if (mMove || mDashPattern[mCurrIdx] - mCurrLen < FLOAT_EPSILON) {
+                        this->moveTo(left.p1);
+                        mMove = false;
+                    }
+                    this->lineTo(left.p2);
+                }
+            } else right = curr;
             mCurrIdx = (mCurrIdx + 1) % mDashCount;
-            if (!mCurOpGap) {
-                this->moveTo(left.p1);
-                this->lineTo(left.p2);
-            }
             mCurrLen = mDashPattern[mCurrIdx];
             mCurOpGap = !mCurOpGap;
             curr = right;
             mPtCur = curr.p1;
+            mMove = true;
         }
         mCurrLen -= len;
         if (!mCurOpGap) {
-            this->moveTo(curr.p1);
+            if (mMove) {
+                this->moveTo(curr.p1);
+                mMove = false;
+            }
             this->lineTo(curr.p2);
         }
 
-        if (mCurrLen < 1) {
+        if (mCurrLen < 0.1f) {
             mCurrIdx = (mCurrIdx + 1) % mDashCount;
             mCurrLen = mDashPattern[mCurrIdx];
             mCurOpGap = !mCurOpGap;
@@ -2299,39 +2335,50 @@ void DashStroke::dashCubicTo(const GlPoint &cnt1, const GlPoint &cnt2, const GlP
 
     auto len = cur.length();
 
-    if (len < mCurrLen) {
+    if (tvg::zero(len)) {
+        this->moveTo(mPtCur);
+    } else if (len <= mCurrLen) {
         mCurrLen -= len;
         if (!mCurOpGap) {
-            this->moveTo(mPtCur);
+            if (mMove) {
+                this->moveTo(mPtCur);
+                mMove = false;
+            }
             this->cubicTo(cnt1, cnt2, end);
         }
     } else {
-        while (len > mCurrLen) {
-            len -= mCurrLen;
-
-            Bezier left, right;
-
-            cur.split(mCurrLen, left, right);
-
-            if (mCurrIdx == 0) {
-                this->moveTo(left.start);
-                this->cubicTo(left.ctrl1, left.ctrl2, left.end);
-            }
-
+        while (len - mCurrLen > 0.0001f) {
+            Bezier right;
+            if (mCurrLen > 0.0f) {
+                Bezier left;
+                cur.split(mCurrLen, left, right);
+                len -= mCurrLen;
+                if (!mCurOpGap) {
+                    if (mMove || mDashPattern[mCurrIdx] - mCurrLen < FLOAT_EPSILON) {
+                        this->moveTo(left.start);
+                        mMove = false;
+                    }
+                    this->cubicTo(left.ctrl1, left.ctrl2, left.end);
+                }
+            } else right = cur;
             mCurrIdx = (mCurrIdx + 1) % mDashCount;
             mCurrLen = mDashPattern[mCurrIdx];
             mCurOpGap = !mCurOpGap;
             cur = right;
             mPtCur = cur.start;
+            mMove = true;
         }
 
         mCurrLen -= len;
         if (!mCurOpGap) {
-            this->moveTo(cur.start);
+            if (mMove) {
+                this->moveTo(cur.start);
+                mMove = false;
+            }
             this->cubicTo(cur.ctrl1, cur.ctrl2, cur.end);
         }
 
-        if (mCurrLen < 1) {
+        if (mCurrLen < 0.1f) {
             mCurrIdx = (mCurrIdx + 1) % mDashCount;
             mCurrLen = mDashPattern[mCurrIdx];
             mCurOpGap = !mCurOpGap;

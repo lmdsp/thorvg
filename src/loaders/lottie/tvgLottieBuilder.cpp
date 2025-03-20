@@ -22,6 +22,13 @@
 
 #include <cstring>
 #include <algorithm>
+#ifdef _WIN32
+    #include <malloc.h>
+#elif defined(__linux__) || defined(__ZEPHYR__)
+    #include <alloca.h>
+#else
+    #include <stdlib.h>
+#endif
 
 #include "tvgCommon.h"
 #include "tvgMath.h"
@@ -231,10 +238,15 @@ static void _updateStroke(LottieStroke* stroke, float frameNo, RenderContext* ct
     ctx->propagator->strokeMiterlimit(stroke->miterLimit);
 
     if (stroke->dashattr) {
-        float dashes[2];
-        dashes[0] = stroke->dashSize(frameNo, exps);
-        dashes[1] = dashes[0] + stroke->dashGap(frameNo, exps);
-        P(ctx->propagator)->strokeDash(dashes, 2, stroke->dashOffset(frameNo, exps));
+        auto size = stroke->dashattr->size == 1 ? 2 : stroke->dashattr->size;
+        auto dashes = (float*)alloca(size * sizeof(float));
+        for (uint8_t i = 0; i < stroke->dashattr->size; ++i) {
+            auto value = stroke->dashattr->values[i](frameNo, exps);
+            //FIXME: allow the zero value in the engine level.
+            dashes[i] = value < FLT_EPSILON ? 0.01f : value;
+        }
+        if (stroke->dashattr->size == 1) dashes[1] = dashes[0];
+        P(ctx->propagator)->strokeDash(dashes, size, stroke->dashattr->offset(frameNo, exps));
     } else {
         ctx->propagator->stroke(nullptr, 0);
     }
@@ -479,7 +491,7 @@ void LottieBuilder::updateRect(LottieGroup* parent, LottieObject** child, float 
     } else {
         r = std::min({r, size.x * 0.5f, size.y * 0.5f});
     }
-    
+
     if (!ctx->repeaters.empty()) {
         auto shape = rect->pooling();
         shape->reset();
@@ -529,7 +541,7 @@ static void _appendCircle(Shape* shape, float cx, float cy, float rx, float ry, 
             points[i] *= *transform;
         }
     }
-    
+
     shape->appendPath(commands, cmdsCnt, points, ptsCnt);
 }
 
@@ -983,6 +995,21 @@ void LottieBuilder::updateImage(LottieGroup* layer)
 }
 
 
+void _fontURLText(LottieText* text, Scene* main, float frameNo, LottieExpressions* exps)
+{
+    auto& doc = text->doc(frameNo);
+    if (!doc.text) return;
+
+    const float ptPerPx = 0.75f; //1 pt = 1/72; 1 in = 96 px; -> 72/96 = 0.75
+    auto txt = Text::gen();
+    txt->font(doc.name, doc.size * 100.0f * ptPerPx);
+    txt->translate(0.0f, -doc.size * 100.0f);
+    txt->text(doc.text);
+    txt->fill(doc.color.rgb[0], doc.color.rgb[1], doc.color.rgb[2]);
+    main->push(std::move(txt));
+}
+
+
 void LottieBuilder::updateText(LottieLayer* layer, float frameNo)
 {
     auto text = static_cast<LottieText*>(layer->children.first());
@@ -991,6 +1018,11 @@ void LottieBuilder::updateText(LottieLayer* layer, float frameNo)
     auto p = doc.text;
 
     if (!p || !text->font) return;
+
+    if (text->font->origin == LottieFont::Origin::FontURL) {
+        _fontURLText(text, layer->scene, frameNo, exps);
+        return;
+    }
 
     auto scale = doc.size;
     Point cursor = {0.0f, 0.0f};
