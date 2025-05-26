@@ -258,6 +258,13 @@ struct LottieTextRange
     enum Shape : uint8_t { Square = 1, RampUp, RampDown, Triangle, Round, Smooth };
     enum Unit : uint8_t { Percent = 1, Index };
 
+    LottieTextRange()
+    {
+        style.flags.fillColor = 0;
+        style.flags.strokeColor = 0;
+        style.flags.strokeWidth = 0;
+    }
+
     ~LottieTextRange()
     {
         free(interpolator);
@@ -275,6 +282,11 @@ struct LottieTextRange
         LottieOpacity fillOpacity = 255;
         LottieOpacity strokeOpacity = 255;
         LottieOpacity opacity = 255;
+        struct {
+            bool fillColor : 1;
+            bool strokeColor : 1;
+            bool strokeWidth : 1;
+        } flags;
     } style;
 
     LottieFloat offset = 0.0f;
@@ -292,12 +304,28 @@ struct LottieTextRange
     bool expressible = false;
 
     float factor(float frameNo, float totalLen, float idx);
+
+    void color(float frameNo, RGB24& fillColor, RGB24& strokeColor, float factor, LottieExpressions* exps)
+    {
+        if (style.flags.fillColor) {
+            auto color = style.fillColor(frameNo, exps);
+            fillColor.rgb[0] = tvg::lerp<uint8_t>(fillColor.rgb[0], color.rgb[0], factor);
+            fillColor.rgb[1] = tvg::lerp<uint8_t>(fillColor.rgb[1], color.rgb[1], factor);
+            fillColor.rgb[2] = tvg::lerp<uint8_t>(fillColor.rgb[2], color.rgb[2], factor);
+        }
+        if (style.flags.strokeColor) {
+            auto color = style.strokeColor(frameNo, exps);
+            strokeColor.rgb[0] = tvg::lerp<uint8_t>(strokeColor.rgb[0], color.rgb[0], factor);
+            strokeColor.rgb[1] = tvg::lerp<uint8_t>(strokeColor.rgb[1], color.rgb[1], factor);
+            strokeColor.rgb[2] = tvg::lerp<uint8_t>(strokeColor.rgb[2], color.rgb[2], factor);
+        }
+    }
 };
 
 
 struct LottieFont
 {
-    enum Origin : uint8_t { Local = 0, CssURL, ScriptURL, FontURL, Embedded };
+    enum Origin : uint8_t {Local = 0, CssURL, ScriptURL, FontURL};
 
     ~LottieFont()
     {
@@ -319,7 +347,7 @@ struct LottieFont
     char* style = nullptr;
     size_t dataSize = 0;
     float ascent = 0.0f;
-    Origin origin = Embedded;
+    Origin origin = Local;
 
     void prepare();
 };
@@ -363,7 +391,7 @@ struct LottieText : LottieObject, LottieRenderPooler<tvg::Shape>
     }
 
     LottieTextDoc doc;
-    LottieFont* font;
+    LottieFont* font = nullptr;
     Array<LottieTextRange*> ranges;
 
     ~LottieText()
@@ -525,6 +553,12 @@ struct LottieTransform : LottieObject
         LottieFloat y = 0.0f;
     };
 
+    SeparateCoord* separateCoord()
+    {
+        if (!coords) coords = new SeparateCoord;
+        return coords;
+    }
+
     struct RotationEx
     {
         LottieFloat x = 0.0f;
@@ -544,8 +578,7 @@ struct LottieTransform : LottieObject
 
     bool mergeable() override
     {
-        if (!opacity.frames && opacity.value == 255) return true;
-        return false;
+        return true;
     }
 
     LottieProperty* property(uint16_t ix) override
@@ -865,7 +898,7 @@ struct LottieLayer : LottieGroup
 
     char* name = nullptr;
     LottieLayer* parent = nullptr;
-    LottieFloat timeRemap = 0.0f;
+    LottieFloat timeRemap = -1.0f;
     LottieLayer* comp = nullptr;  //Precompositor, current layer is belonges.
     LottieTransform* transform = nullptr;
     Array<LottieMask*> masks;

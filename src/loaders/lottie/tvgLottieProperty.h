@@ -251,6 +251,7 @@ float _frameNo(T* frames, int32_t key)
 template<typename T>
 float _loop(T* frames, float frameNo, LottieExpression* exp)
 {
+    if (!frames) return frameNo;
     if (frameNo >= exp->loop.in || frameNo < frames->first().no || frameNo < frames->last().no) return frameNo;
 
     frameNo -= frames->first().no;
@@ -947,18 +948,19 @@ struct LottieBitmap : LottieProperty
         if (shallow) {
             b64Data = rhs.b64Data;
             mimeType = rhs.mimeType;
+
+            rhs.b64Data = nullptr;
+            rhs.mimeType = nullptr;
         } else {
             //TODO: optimize here by avoiding data copy
             TVGLOG("LOTTIE", "Shallow copy of the image data!");
             b64Data = strdup(rhs.b64Data);
             mimeType = strdup(rhs.mimeType);
         }
+
         size = rhs.size;
         width = rhs.width;
         height = rhs.height;
-
-        rhs.b64Data = nullptr;
-        rhs.mimeType = nullptr;
     }
 };
 

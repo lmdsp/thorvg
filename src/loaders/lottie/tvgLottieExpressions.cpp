@@ -37,6 +37,7 @@ struct ExpContent
     LottieExpression* exp;
     LottieObject* obj;
     float frameNo;
+    size_t refCnt;
 };
 
 static jerry_value_t _content(const jerry_call_info_t* info, const jerry_value_t args[], const jerry_length_t argsCnt);
@@ -58,19 +59,48 @@ static const char* EXP_EFFECT= "effect";
 static LottieExpressions* exps = nullptr;   //singleton instance engine
 
 
-static ExpContent* _expcontent(LottieExpression* exp, float frameNo, LottieObject* obj)
+static ExpContent* _expcontent(LottieExpression* exp, float frameNo, void* obj, size_t refCnt = 1)
 {
     auto data = (ExpContent*)malloc(sizeof(ExpContent));
     data->exp = exp;
     data->frameNo = frameNo;
-    data->obj = obj;
+    data->obj = (LottieObject*)obj;
+    data->refCnt = refCnt;
     return data;
+}
+
+
+static inline ExpContent* _expcontent(ExpContent* data)
+{
+    ++data->refCnt;
+    return data;
+}
+
+
+static float _rand()
+{
+    return (float)(rand() % 10000001) * 0.0000001f;
+}
+
+
+static jerry_value_t _point2d(const Point& pt)
+{
+    auto obj = jerry_object();
+    auto v1 = jerry_number(pt.x);
+    auto v2 = jerry_number(pt.y);
+    jerry_object_set_index(obj, 0, v1);
+    jerry_object_set_index(obj, 1, v2);
+    jerry_value_free(v1);
+    jerry_value_free(v2);
+    return obj;
 }
 
 
 static void contentFree(void *native_p, struct jerry_object_native_info_t *info_p)
 {
-    free(native_p);
+    if (--static_cast<ExpContent*>(native_p)->refCnt == 0) {
+        free(native_p);
+    }
 }
 
 static jerry_object_native_info_t freeCb {contentFree, 0, 0};
@@ -327,9 +357,11 @@ static void _buildLayer(jerry_value_t context, float frameNo, LottieLayer* layer
     jerry_value_free(toComp);
 
     //content("name"), #look for the named property from a layer
+    auto data = _expcontent(exp, frameNo, layer, 1);
+
     auto content = jerry_function_external(_content);
     jerry_object_set_sz(context, EXP_CONTENT, content);
-    jerry_object_set_native_ptr(content, &freeCb, _expcontent(exp, frameNo, layer));
+    jerry_object_set_native_ptr(content, &freeCb, data);
     jerry_value_free(content);
 }
 
@@ -603,8 +635,7 @@ static jerry_value_t _length(const jerry_call_info_t* info, const jerry_value_t 
 
 static jerry_value_t _random(const jerry_call_info_t* info, const jerry_value_t args[], const jerry_length_t argsCnt)
 {
-    auto val = (float)(rand() % 10000001);
-    return jerry_number(val * 0.0000001f);
+    return jerry_number(_rand());
 }
 
 
@@ -717,7 +748,7 @@ static jerry_value_t _propertyGroup(const jerry_call_info_t* info, const jerry_v
     //intermediate group
     if (level == 1) {
         auto group = jerry_function_external(_property);
-        jerry_object_set_native_ptr(group, &freeCb, _expcontent(data->exp, data->frameNo, data->obj));
+        jerry_object_set_native_ptr(group, &freeCb, _expcontent(data));
         jerry_object_set_sz(group, "", group);
         return group;
     }
@@ -818,6 +849,32 @@ static jerry_value_t _speedAtTime(const jerry_call_info_t* info, const jerry_val
     auto speed = sqrtf(pow(cur.x - prv.x, 2) + pow(cur.y - prv.y, 2)) / elapsed;
     auto obj = jerry_number(speed);
     return obj;
+}
+
+
+
+static jerry_value_t _wiggle(const jerry_call_info_t* info, const jerry_value_t args[], const jerry_length_t argsCnt)
+{
+    auto data = static_cast<ExpContent*>(jerry_object_get_native_ptr(info->function, &freeCb));
+    auto freq = jerry_value_as_number(args[0]);
+    auto amp = jerry_value_as_number(args[1]);
+    auto octaves = (argsCnt > 2) ? jerry_value_as_int32(args[2]) : 1;
+    auto ampm = (argsCnt > 3) ? jerry_value_as_number(args[3]) : 5.0f;
+    auto time = (argsCnt > 4) ? jerry_value_as_number(args[4]) : data->exp->comp->timeAtFrame(data->frameNo);
+
+    Point result = {100.0f, 100.0f};
+
+    for (int o = 0; o < octaves; ++o) {
+        auto repeat = int(time * freq);
+        auto frac = (time * freq - float(repeat)) * 1.25f;
+        for (int i = 0; i < repeat; ++i) {
+            result.x += (_rand() * 2.0f - 1.0f) * amp * frac;
+            result.y += (_rand() * 2.0f - 1.0f) * amp * frac;
+        }
+        freq *= 2.0f;
+        amp *= ampm;
+    }
+    return _point2d(result);
 }
 
 
@@ -1044,8 +1101,23 @@ static void _buildProperty(float frameNo, jerry_value_t context, LottieExpressio
     jerry_object_set_native_ptr(speedAtTime, nullptr, exp);
     jerry_value_free(speedAtTime);
 
-    //wiggle(freq, amp, octaves=1, amp_mult=.5, t=time)
-    //temporalWiggle(freq, amp, octaves=1, amp_mult=.5, t=time)
+    {
+        auto data =  _expcontent(exp, frameNo, exp->object, 2);
+
+        auto wiggle = jerry_function_external(_wiggle);
+        jerry_object_set_sz(context, "wiggle", wiggle);
+        jerry_object_set_native_ptr(wiggle, &freeCb, data);
+        jerry_value_free(wiggle);
+
+        //temporalWiggle(freq, amp, octaves=1, amp_mult=.5, t=time)
+
+        auto propertyGroup = jerry_function_external(_propertyGroup);
+        jerry_object_set_native_ptr(propertyGroup, &freeCb, data);
+        jerry_object_set_sz(context, "propertyGroup", propertyGroup);
+        jerry_value_free(propertyGroup);
+
+        //propertyIndex
+    }
     //smooth(width=.2, samples=5, t=time)
 
     auto loopIn = jerry_function_external(_loopIn);
@@ -1084,20 +1156,17 @@ static void _buildProperty(float frameNo, jerry_value_t context, LottieExpressio
     jerry_object_set_sz(context, "numKeys", numKeys);
     jerry_value_free(numKeys);
 
-    auto propertyGroup = jerry_function_external(_propertyGroup);
-    jerry_object_set_native_ptr(propertyGroup, &freeCb, _expcontent(exp, frameNo, exp->object));
-    jerry_object_set_sz(context, "propertyGroup", propertyGroup);
-    jerry_value_free(propertyGroup);
-
-    //propertyIndex
-
     //name
 
-    //content("name"), #look for the named property from a layer
-    auto content = jerry_function_external(_content);
-    jerry_object_set_sz(context, EXP_CONTENT, content);
-    jerry_object_set_native_ptr(content, &freeCb, _expcontent(exp, frameNo, exp->layer));
-    jerry_value_free(content);
+    {
+        auto data = _expcontent(exp, frameNo, exp->layer, 1);
+
+        //content("name"), #look for the named property from a layer
+        auto content = jerry_function_external(_content);
+        jerry_object_set_sz(context, EXP_CONTENT, content);
+        jerry_object_set_native_ptr(content, &freeCb, data);
+        jerry_value_free(content);
+    }
 
     //expansions per types
     if (exp->property->type == LottieProperty::Type::PathSet) _buildPath(context, exp);
@@ -1214,8 +1283,11 @@ static void _buildMath(jerry_value_t context)
 }
 
 
-void LottieExpressions::buildGlobal(LottieExpression* exp)
+void LottieExpressions::buildGlobal(float frameNo, LottieExpression* exp)
 {
+    free(jerry_object_get_native_ptr(comp, &freeCb));
+    jerry_object_set_native_ptr(comp, &freeCb, _expcontent(exp, frameNo, exp->layer));
+
     auto index = jerry_number(exp->layer->idx);
     jerry_object_set_sz(global, EXP_INDEX, index);
     jerry_value_free(index);
@@ -1224,11 +1296,6 @@ void LottieExpressions::buildGlobal(LottieExpression* exp)
 
 void LottieExpressions::buildComp(jerry_value_t context, float frameNo, LottieLayer* comp, LottieExpression* exp)
 {
-    auto data = static_cast<ExpContent*>(jerry_object_get_native_ptr(context, &freeCb));
-    data->exp = exp;
-    data->frameNo = frameNo;
-    data->obj = comp;
-
     //layer(index) / layer(name) / layer(otherLayer, reIndex)
     auto layer = jerry_function_external(_layer);
     jerry_object_set_sz(context, "layer", layer);
@@ -1292,13 +1359,11 @@ jerry_value_t LottieExpressions::buildGlobal()
 
     //comp(name)
     comp = jerry_function_external(_comp);
-    jerry_object_set_native_ptr(comp, &freeCb, _expcontent(nullptr, 0.0f, nullptr));
     jerry_object_set_sz(global, "comp", comp);
 
     //footage(name)
 
     thisComp = jerry_object();
-    jerry_object_set_native_ptr(thisComp, &freeCb, _expcontent(nullptr, 0.0f, nullptr));
     jerry_object_set_sz(global, "thisComp", thisComp);
 
     thisLayer = jerry_object();
@@ -1330,7 +1395,7 @@ jerry_value_t LottieExpressions::evaluate(float frameNo, LottieExpression* exp)
 {
     if (exp->disabled) return jerry_undefined();
 
-    buildGlobal(exp);
+    buildGlobal(frameNo, exp);
 
     //main composition
     buildComp(exp->comp, frameNo, exp);

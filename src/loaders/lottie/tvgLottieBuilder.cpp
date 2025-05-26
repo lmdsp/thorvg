@@ -167,13 +167,8 @@ void LottieBuilder::updateTransform(LottieLayer* layer, float frameNo)
 
     _updateTransform(transform, frameNo, layer->autoOrient, matrix, layer->cache.opacity, exps);
 
-    if (parent) {
-        if (!tvg::identity((const Matrix*) &parent->cache.matrix)) {
-            if (tvg::identity((const Matrix*)&matrix))
-                layer->cache.matrix = parent->cache.matrix;
-            else layer->cache.matrix = parent->cache.matrix * matrix;
-        }
-    }
+    if (parent) layer->cache.matrix = parent->cache.matrix * matrix;
+
     layer->cache.frameNo = frameNo;
 }
 
@@ -183,25 +178,30 @@ void LottieBuilder::updateTransform(LottieGroup* parent, LottieObject** child, f
     auto transform = static_cast<LottieTransform*>(*child);
     if (!transform) return;
 
+    Matrix m;
     uint8_t opacity;
 
     if (parent->mergeable()) {
-        if (!ctx->transform) ctx->transform = (Matrix*)malloc(sizeof(Matrix));
-        _updateTransform(transform, frameNo, false, *ctx->transform, opacity, exps);
+        if (ctx->transform) {
+            _updateTransform(transform, frameNo, false, m, opacity, exps);
+            *ctx->transform *= m;
+        } else {
+            ctx->transform = new Matrix;
+            _updateTransform(transform, frameNo, false, *ctx->transform, opacity, exps);
+        }
         return;
     }
 
     ctx->merging = nullptr;
 
-    Matrix matrix;
-    if (!_updateTransform(transform, frameNo, false, matrix, opacity, exps)) return;
+    if (!_updateTransform(transform, frameNo, false, m, opacity, exps)) return;
 
-    ctx->propagator->transform(PP(ctx->propagator)->transform() * matrix);
+    ctx->propagator->transform(PP(ctx->propagator)->transform() * m);
     ctx->propagator->opacity(MULTIPLY(opacity, PP(ctx->propagator)->opacity));
 
     //FIXME: preserve the stroke width. too workaround, need a better design.
     if (P(ctx->propagator)->rs.strokeWidth() > 0.0f) {
-        auto denominator = sqrtf(matrix.e11 * matrix.e11 + matrix.e12 * matrix.e12);
+        auto denominator = sqrtf(m.e11 * m.e11 + m.e12 * m.e12);
         if (denominator > 1.0f) ctx->propagator->stroke(ctx->propagator->strokeWidth() / denominator);
     }
 }
@@ -719,7 +719,7 @@ static void _updatePolygon(LottieGroup* parent, LottiePolyStar* star, Matrix* tr
     auto radius = star->outerRadius(frameNo, exps);
     auto outerRoundness = star->outerRoundness(frameNo, exps) * 0.01f;
 
-    auto angle = deg2rad(-90.0f);
+    auto angle = -MATH_PI2;
     auto anglePerPoint = 2.0f * MATH_PI / float(ptsCnt);
     auto direction = star->clockwise ? 1.0f : -1.0f;
     auto hasRoundness = !tvg::zero(outerRoundness);
@@ -748,6 +748,7 @@ static void _updatePolygon(LottieGroup* parent, LottiePolyStar* star, Matrix* tr
     if (transform) in *= *transform;
     shape->moveTo(in.x, in.y);
 
+    auto coeff = anglePerPoint * radius * outerRoundness * POLYGON_MAGIC_NUMBER;
     for (size_t i = 0; i < ptsCnt; i++) {
         auto previousX = x;
         auto previousY = y;
@@ -756,16 +757,11 @@ static void _updatePolygon(LottieGroup* parent, LottiePolyStar* star, Matrix* tr
 
         if (hasRoundness) {
             auto cp1Theta = tvg::atan2(previousY, previousX) - MATH_PI2 * direction;
-            auto cp1Dx = cosf(cp1Theta);
-            auto cp1Dy = sinf(cp1Theta);
+            auto cp1x = coeff * cosf(cp1Theta);
+            auto cp1y = coeff * sinf(cp1Theta);
             auto cp2Theta = tvg::atan2(y, x) - MATH_PI2 * direction;
-            auto cp2Dx = cosf(cp2Theta);
-            auto cp2Dy = sinf(cp2Theta);
-
-            auto cp1x = radius * outerRoundness * POLYGON_MAGIC_NUMBER * cp1Dx;
-            auto cp1y = radius * outerRoundness * POLYGON_MAGIC_NUMBER * cp1Dy;
-            auto cp2x = radius * outerRoundness * POLYGON_MAGIC_NUMBER * cp2Dx;
-            auto cp2y = radius * outerRoundness * POLYGON_MAGIC_NUMBER * cp2Dy;
+            auto cp2x = coeff * cosf(cp2Theta);
+            auto cp2y = coeff * sinf(cp2Theta);
 
             Point in2 = {previousX - cp1x, previousY - cp1y};
             Point in3 = {x + cp2x, y + cp2y};
@@ -1019,7 +1015,7 @@ void LottieBuilder::updateText(LottieLayer* layer, float frameNo)
 
     if (!p || !text->font) return;
 
-    if (text->font->origin == LottieFont::Origin::FontURL) {
+    if (text->font->origin != LottieFont::Origin::Local || text->font->chars.empty()) {
         _fontURLText(text, layer->scene, frameNo, exps);
         return;
     }
@@ -1169,25 +1165,13 @@ void LottieBuilder::updateText(LottieLayer* layer, float frameNo)
                         opacity = (uint8_t)(opacity - f * (opacity - (*s)->style.opacity(frameNo)));
                         shape->opacity(opacity);
 
-                        auto rangeColor = (*s)->style.fillColor(frameNo); //TODO: use flag to check whether it was really set
-                        if (tvg::equal(f, 1.0f)) color = rangeColor;
-                        else {
-                            color.rgb[0] = lerp<uint8_t>(color.rgb[0], rangeColor.rgb[0], f);
-                            color.rgb[1] = lerp<uint8_t>(color.rgb[1], rangeColor.rgb[1], f);
-                            color.rgb[2] = lerp<uint8_t>(color.rgb[2], rangeColor.rgb[2], f);
-                        }
+                        (*s)->color(frameNo, color, strokeColor, f, exps);
+
                         fillOpacity = (uint8_t)(fillOpacity - f * (fillOpacity - (*s)->style.fillOpacity(frameNo)));
                         shape->fill(color.rgb[0], color.rgb[1], color.rgb[2], fillOpacity);
 
-                        shape->stroke(f * (*s)->style.strokeWidth(frameNo) / scale);
+                        if ((*s)->style.flags.strokeWidth)  shape->stroke(f * (*s)->style.strokeWidth(frameNo) / scale);
                         if (shape->strokeWidth() > 0.0f) {
-                            auto rangeColor = (*s)->style.strokeColor(frameNo); //TODO: use flag to check whether it was really set
-                            if (tvg::equal(f, 1.0f)) strokeColor = rangeColor;
-                            else {
-                                strokeColor.rgb[0] = lerp<uint8_t>(strokeColor.rgb[0], rangeColor.rgb[0], f);
-                                strokeColor.rgb[1] = lerp<uint8_t>(strokeColor.rgb[1], rangeColor.rgb[1], f);
-                                strokeColor.rgb[2] = lerp<uint8_t>(strokeColor.rgb[2], rangeColor.rgb[2], f);
-                            }
                             strokeOpacity = (uint8_t)(strokeOpacity - f * (strokeOpacity - (*s)->style.strokeOpacity(frameNo)));
                             shape->stroke(strokeColor.rgb[0], strokeColor.rgb[1], strokeColor.rgb[2], strokeOpacity);
                             shape->order(doc.stroke.below);
@@ -1511,7 +1495,6 @@ void LottieBuilder::updateLayer(LottieComposition* comp, Scene* scene, LottieLay
 
     updateEffect(layer, frameNo);
 
-    //the given matte source was composited by the target earlier.
     if (!layer->matteSrc) scene->push(cast(layer->scene));
 }
 
@@ -1601,6 +1584,7 @@ static bool _buildComposition(LottieComposition* comp, LottieLayer* parent)
         }
 
         if (child->matteTarget) {
+            child->matteTarget->matteSrc = true;
             //parenting
             _buildHierarchy(parent, child->matteTarget);
             //precomp referencing

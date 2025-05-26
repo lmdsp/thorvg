@@ -201,9 +201,7 @@ void LottieFont::prepare()
 {
     if (!data.b64src || !name) return;
 
-    TaskScheduler::async(false);
     Text::load(name, data.b64src, data.size, "ttf", false);
-    TaskScheduler::async(true);
 }
 
 
@@ -214,12 +212,8 @@ void LottieImage::prepare()
     auto picture = Picture::gen().release();
 
     //force to load a picture on the same thread
-    TaskScheduler::async(false);
-
     if (data.size > 0) picture->load((const char*)data.b64Data, data.size, data.mimeType, false);
     else picture->load(data.path);
-
-    TaskScheduler::async(true);
 
     picture->size(data.width, data.height);
     PP(picture)->ref();
@@ -231,13 +225,11 @@ void LottieImage::prepare()
 void LottieImage::update()
 {
     //Update the picture data
-    TaskScheduler::async(false);
     for (auto p = pooler.begin(); p < pooler.end(); ++p) {
         if (data.size > 0) (*p)->load((const char*)data.b64Data, data.size, data.mimeType, false);
         else (*p)->load(data.path);
         (*p)->size(data.width, data.height);
     }
-    TaskScheduler::async(true);
 }
 
 
@@ -434,7 +426,7 @@ void LottieGroup::prepare(LottieObject::Type type)
 
         /* Figure out if this group is a simple path drawing.
            In that case, the rendering context can be sharable with the parent's. */
-        if (allowMerge && (child->type == LottieObject::Group || !child->mergeable())) allowMerge = false;
+        if (allowMerge && !child->mergeable()) allowMerge = false;
 
         //Figure out this group has visible contents
         switch (child->type) {
@@ -541,7 +533,7 @@ void LottieLayer::prepare(RGB24* color)
 
 float LottieLayer::remap(LottieComposition* comp, float frameNo, LottieExpressions* exp)
 {
-    if (timeRemap.frames || timeRemap.value) {
+    if (timeRemap.frames || timeRemap.value >= 0.0f) {
         frameNo = comp->frameAtTime(timeRemap(frameNo, exp));
     } else {
         frameNo -= startFrame;

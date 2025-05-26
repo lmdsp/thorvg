@@ -603,11 +603,14 @@ LottieTransform* LottieParser::parseTransform(bool ddd)
             enterObject();
             while (auto key = nextObjectKey()) {
                 if (KEY_AS("k")) parsePropertyInternal(transform->position);
-                else if (KEY_AS("s") && getBool()) transform->coords = new LottieTransform::SeparateCoord;
-                //check separateCoord to figure out whether "x(expression)" / "x(coord)"
-                else if (transform->coords && KEY_AS("x")) parseProperty<LottieProperty::Type::Float>(transform->coords->x);
-                else if (transform->coords && KEY_AS("y")) parseProperty<LottieProperty::Type::Float>(transform->coords->y);
-                else if (KEY_AS("x")) transform->position.exp = _expression(getStringCopy(), comp, context.layer, context.parent, &transform->position);
+                else if (KEY_AS("x"))
+                {
+                    //check separateCoord to figure out whether "x(expression)" / "x(coord)"
+                    if (peekType() == kStringType) transform->position.exp = _expression(getStringCopy(), comp, context.layer, context.parent, &transform->position);
+                    else parseProperty(transform->separateCoord()->x);
+                }
+                else if (KEY_AS("y")) parseProperty(transform->separateCoord()->y);
+
                 else if (KEY_AS("sid")) registerSlot<LottieProperty::Type::Position>(transform, getString());
                 else skip(key);
             }
@@ -1195,11 +1198,17 @@ void LottieParser::parseTextRange(LottieText* text)
                 while (auto key = nextObjectKey()) {
                     if (KEY_AS("t")) parseProperty<LottieProperty::Type::Float>(selector->style.letterSpacing);
                     else if (KEY_AS("ls")) parseProperty<LottieProperty::Type::Color>(selector->style.lineSpacing);
-                    else if (KEY_AS("fc")) parseProperty<LottieProperty::Type::Color>(selector->style.fillColor);
-                    else if (KEY_AS("fo")) parseProperty<LottieProperty::Type::Color>(selector->style.fillOpacity);
-                    else if (KEY_AS("sw")) parseProperty<LottieProperty::Type::Float>(selector->style.strokeWidth);
-                    else if (KEY_AS("sc")) parseProperty<LottieProperty::Type::Color>(selector->style.strokeColor);
-                    else if (KEY_AS("so")) parseProperty<LottieProperty::Type::Opacity>(selector->style.strokeOpacity);
+                    else if (KEY_AS("fc")) {
+                        parseProperty<LottieProperty::Type::Color>(selector->style.fillColor);
+                        selector->style.flags.fillColor = true;
+                    } else if (KEY_AS("fo")) parseProperty<LottieProperty::Type::Color>(selector->style.fillOpacity);
+                    else if (KEY_AS("sw")) {
+                        parseProperty<LottieProperty::Type::Float>(selector->style.strokeWidth);
+                        selector->style.flags.strokeWidth = true;
+                    } else if (KEY_AS("sc")) {
+                        parseProperty<LottieProperty::Type::Color>(selector->style.strokeColor);
+                        selector->style.flags.strokeColor = true;
+                    } else if (KEY_AS("so")) parseProperty<LottieProperty::Type::Opacity>(selector->style.strokeOpacity);
                     else if (KEY_AS("o")) parseProperty<LottieProperty::Type::Opacity>(selector->style.opacity);
                     else if (KEY_AS("p")) parseProperty<LottieProperty::Type::Position>(selector->style.position);
                     else if (KEY_AS("s")) parseProperty<LottieProperty::Type::Position>(selector->style.scale);
