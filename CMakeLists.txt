@@ -31,15 +31,26 @@ function(tvg_assign_source_groups file_list)
 endfunction()
 
 if(FLUX_USE_THORVG)
-    file(GLOB_RECURSE ThorVG_SRC
-        src/loaders/*.cpp
+    file(GLOB_RECURSE ThorVG_HPP
         src/loaders/*.hpp
-        src/renderer/*.cpp
         src/renderer/*.hpp
     )
 
+    file(GLOB_RECURSE ThorVG_CPP
+        src/loaders/*.cpp
+        src/renderer/*.cpp
+    )
+
+    # Include individual .cpp files in project for debugging but mark them as not compiled
+    # WARNING CLion and possibly others do not respect the 'excluded from build flag'
+    if (XCODE OR MSVC)
+        set(ThorVG_SRC ${ThorVG_HPP} ${ThorVG_CPP})
+    else()
+        set(ThorVG_SRC ${ThorVG_HPP})
+    endif()
+
     add_library(thorvg STATIC
-        ${ThorVG_SRC}
+        #${ThorVG_SRC}
         thorvg-unity0.cpp
         thorvg-unity1.cpp
         thorvg-unity2.cpp
@@ -55,9 +66,9 @@ if(FLUX_USE_THORVG)
         inc/thorvg.h)
 
     if(MSVC)
-        set_property(SOURCE ${ThorVG_SRC} PROPERTY VS_SETTINGS "ExcludedFromBuild=true")
-    else()
-        set_source_files_properties(${ThorVG_SRC} PROPERTIES HEADER_FILE_ONLY TRUE)
+        set_property(SOURCE ${ThorVG_CPP} PROPERTY VS_SETTINGS "ExcludedFromBuild=true")
+    elseif(XCODE)
+        set_source_files_properties(${ThorVG_CPP} PROPERTIES HEADER_FILE_ONLY TRUE)
     endif()
 
     target_include_directories(thorvg
@@ -73,15 +84,13 @@ if(FLUX_USE_THORVG)
         PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>/src/loaders/png
     )
 
-    # target_link_libraries(thorvg CONAN_PKG::nuxpixels)
-
     # define compile definition
     target_compile_features(thorvg PUBLIC cxx_std_17)
     target_compile_definitions(thorvg PUBLIC _UNICODE UNICODE)
 
     # TEMP Until HASH_KEY is fixed
-    target_link_libraries(thorvg PRIVATE CONAN_PKG::xxhash)
-
+    # find_package(xxhash)
+    # target_link_libraries(thorvg PRIVATE xxhash::xxhash)
     if(APPLE)
         target_compile_definitions(thorvg PUBLIC __PLATFORM_OSX__ __MACOS__)
         target_compile_options(thorvg PUBLIC -Wno-shorten-64-to-32)
