@@ -281,7 +281,7 @@ bool LottieParser::getValue(Array<Point>& pts)
     enterArray();
     while (nextArrayValue()) {
         enterArray();
-        Point pt;
+        Point pt{};
         getValue(pt);
         pts.push(pt);
     }
@@ -1298,7 +1298,7 @@ void LottieParser::parseEffect(LottieEffect* effect, void(LottieParser::*func)(L
                         else skip(key);
                     }
                     ++idx;
-                } else skip();
+                } else (this->*func)(effect, idx++);
             } else skip();
         }
     }
@@ -1581,6 +1581,7 @@ bool LottieParser::apply(LottieSlot* slot, bool byDefault)
                 if (KEY_AS("p")) parseColorStop(static_cast<LottieGradient*>(obj));
                 else skip(key);
             }
+            static_cast<LottieGradient*>(obj)->prepare();
             break;
         }
         case LottieProperty::Type::TextDoc: {

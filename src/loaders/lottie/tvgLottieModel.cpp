@@ -342,6 +342,7 @@ uint32_t LottieGradient::populate(ColorStop& color, size_t count)
 
     color.input->reset();
     delete(color.input);
+    color.input = nullptr;
 
     return output.count;
 }
@@ -534,11 +535,9 @@ void LottieLayer::prepare(RGB24* color)
 float LottieLayer::remap(LottieComposition* comp, float frameNo, LottieExpressions* exp)
 {
     if (timeRemap.frames || timeRemap.value >= 0.0f) {
-        frameNo = comp->frameAtTime(timeRemap(frameNo, exp));
-    } else {
-        frameNo -= startFrame;
+        return comp->frameAtTime(timeRemap(frameNo, exp));
     }
-    return (frameNo / timeStretch);
+    return (frameNo - startFrame) / timeStretch;
 }
 
 

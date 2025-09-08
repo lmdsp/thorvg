@@ -46,16 +46,9 @@ static void _roundCorner(Array<PathCommand>& cmds, Array<Point>& pts, const Poin
 }
 
 
-static bool _zero(const Point& p1, const Point& p2)
-{
-    constexpr float epsilon = 1e-3f;
-    return fabsf(p1.x / p2.x - 1.0f) < epsilon && fabsf(p1.y / p2.y - 1.0f) < epsilon;
-}
-
-
 static bool _intersect(const Line& line1, const Line& line2, Point& intersection, bool& inside)
 {
-    if (_zero(line1.pt2, line2.pt1)) {
+    if (tvg::zero(line1.pt2 - line2.pt1)) {
         intersection = line1.pt2;
         inside = true;
         return true;
@@ -115,9 +108,12 @@ void LottieOffsetModifier::corner(const Line& line, const Line& nextLine, uint32
                 auto norm = normal(line.pt1, line.pt2);
                 auto nextNorm = normal(nextLine.pt1, nextLine.pt2);
                 auto miterDirection = (norm + nextNorm) / length(norm + nextNorm);
+                if (1.0f <= miterLimit * fabsf(miterDirection.x * norm.x + miterDirection.y * norm.y)) {
+                    outCmds.push(PathCommand::LineTo);
+                    outPts.push(intersect);
+                }
                 outCmds.push(PathCommand::LineTo);
-                if (1.0f <= miterLimit * fabsf(miterDirection.x * norm.x + miterDirection.y * norm.y)) outPts.push(intersect);
-                else outPts.push(nextLine.pt1);
+                outPts.push(nextLine.pt1);
             } else {
                 outCmds.push(PathCommand::LineTo);
                 outPts.push(nextLine.pt1);
@@ -159,7 +155,7 @@ void LottieOffsetModifier::line(const PathCommand* inCmds, uint32_t inCmdsCnt, c
     Line nextLine = state.firstLine;
     if (inCmds[currentCmd + 1] == PathCommand::LineTo) nextLine = _offset(inPts[currentPt + degenerated], inPts[currentPt + 1 + degenerated], offset);
     else if (inCmds[currentCmd + 1] == PathCommand::CubicTo) nextLine = _offset(inPts[currentPt + 1 + degenerated], inPts[currentPt + 2 + degenerated], offset);
-    else if (inCmds[currentCmd + 1] == PathCommand::Close && !_zero(inPts[currentPt + degenerated], inPts[state.movetoInIndex + degenerated]))
+    else if (inCmds[currentCmd + 1] == PathCommand::Close && !tvg::zero(inPts[currentPt + degenerated] - inPts[state.movetoInIndex + degenerated]))
         nextLine = _offset(inPts[currentPt + degenerated], inPts[state.movetoInIndex + degenerated], offset);
 
     corner(state.line, nextLine, state.movetoOutIndex, inCmds[currentCmd + 1] == PathCommand::Close, outCmds, outPts);
@@ -365,7 +361,7 @@ bool LottieOffsetModifier::modifyPath(const PathCommand* inCmds, uint32_t inCmds
             iPt += 3;
         }
         else {
-            if (!_zero(inPts[iPt - 1], inPts[state.movetoInIndex])) {
+            if (!tvg::zero(inPts[iPt - 1] - inPts[state.movetoInIndex])) {
                 outCmds.push(PathCommand::LineTo);
                 corner(state.line, state.firstLine, state.movetoOutIndex, true, outCmds, outPts);
             }
